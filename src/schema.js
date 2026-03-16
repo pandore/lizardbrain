@@ -1,5 +1,5 @@
 /**
- * schema.js — Creates and manages the chatmem SQLite schema.
+ * schema.js — Creates and manages the clawmem SQLite schema.
  */
 
 const db = require('./db');

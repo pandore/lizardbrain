@@ -1,5 +1,5 @@
 /**
- * config.js — Load chatmem configuration from file or env vars.
+ * config.js — Load clawmem configuration from file or env vars.
  */
 
 const fs = require('fs');
