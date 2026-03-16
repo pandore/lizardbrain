@@ -81,6 +81,7 @@ clawmem works with any OpenAI-compatible chat completions API. Pick whatever fit
 |----------|-----------|-------------------|----------------------|
 | OpenAI | `https://api.openai.com/v1` | `gpt-5-nano` | $0.05 / $0.40 |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash-lite` | $0.10 / $0.40 |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3-flash-preview` | $0.50 / $3.00 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-instruct` | $0.10 / $0.32 |
 | Mistral | `https://api.mistral.ai/v1` | `ministral-3b-2512` | $0.10 / $0.10 |
 | Anthropic | `https://api.anthropic.com/v1/` | `claude-haiku-4.5` | $1.00 / $5.00 |
