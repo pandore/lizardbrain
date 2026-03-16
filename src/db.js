@@ -19,7 +19,7 @@ function read(dbPath, query) {
     }
     const msg = err.stderr?.toString() || err.message;
     if (msg.includes('no such table') || msg.includes('no such column')) return [];
-    console.error(`[chatmem:db] read error: ${msg}`);
+    console.error(`[clawmem:db] read error: ${msg}`);
     return [];
   }
 }
@@ -40,7 +40,7 @@ function readFallback(dbPath, query) {
       return obj;
     });
   } catch (err) {
-    console.error(`[chatmem:db] readFallback error: ${err.stderr?.toString() || err.message}`);
+    console.error(`[clawmem:db] readFallback error: ${err.stderr?.toString() || err.message}`);
     return [];
   }
 }
@@ -53,7 +53,7 @@ function write(dbPath, query) {
     });
     return true;
   } catch (err) {
-    console.error(`[chatmem:db] write error: ${err.stderr?.toString() || err.message}`);
+    console.error(`[clawmem:db] write error: ${err.stderr?.toString() || err.message}`);
     return false;
   }
 }

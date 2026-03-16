@@ -1,10 +1,10 @@
 {
-  "memoryDbPath": "./chatmem.db",
+  "memoryDbPath": "./clawmem.db",
 
   "llm": {
     "baseUrl": "http://localhost:11434/v1",
     "apiKey": "ollama",
-    "model": "llama3.2"
+    "model": "qwen2.5:7b"
   },
 
   "source": {

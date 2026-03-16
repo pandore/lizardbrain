@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * chatmem CLI — Command-line interface for chatmem.
+ * clawmem CLI — Command-line interface for clawmem.
  *
  * Usage:
- *   chatmem init [--force]                    Create memory database
- *   chatmem extract [--dry-run] [--reprocess] Run extraction pipeline
- *   chatmem stats                             Show database statistics
- *   chatmem search <query>                    Search facts and topics
- *   chatmem who <keyword>                     Find members with expertise
+ *   clawmem init [--force]                    Create memory database
+ *   clawmem extract [--dry-run] [--reprocess] Run extraction pipeline
+ *   clawmem stats                             Show database statistics
+ *   clawmem search <query>                    Search facts and topics
+ *   clawmem who <keyword>                     Find members with expertise
  *
  * Configuration:
- *   Place a chatmem.json in your working directory, or use environment variables.
+ *   Place a clawmem.json in your working directory, or use environment variables.
  *   See README.md for details.
  */
 
 const path = require('path');
-const chatmem = require('./index');
+const clawmem = require('./index');
 const config = require('./config');
 
 const args = process.argv.slice(2);
@@ -33,7 +33,7 @@ async function main() {
 
   switch (command) {
     case 'init': {
-      const result = chatmem.init(cfg.memoryDbPath, { force: flag('force') });
+      const result = clawmem.init(cfg.memoryDbPath, { force: flag('force') });
       console.log(result.message);
       break;
     }
@@ -41,12 +41,12 @@ async function main() {
     case 'extract': {
       const db = require('./db');
       if (!db.exists(cfg.memoryDbPath)) {
-        console.log('Memory database not found. Run `chatmem init` first.');
+        console.log('Memory database not found. Run `clawmem init` first.');
         process.exit(1);
       }
 
       const adapter = createAdapter(cfg.source);
-      const result = await chatmem.extract(adapter, cfg.memoryDbPath, cfg, {
+      const result = await clawmem.extract(adapter, cfg.memoryDbPath, cfg, {
         dryRun: flag('dry-run'),
         reprocess: flag('reprocess'),
       });
@@ -61,12 +61,12 @@ async function main() {
     case 'stats': {
       const db = require('./db');
       if (!db.exists(cfg.memoryDbPath)) {
-        console.log('Memory database not found. Run `chatmem init` first.');
+        console.log('Memory database not found. Run `clawmem init` first.');
         process.exit(1);
       }
 
-      const stats = chatmem.query.getStats(cfg.memoryDbPath);
-      console.log('\n=== chatmem stats ===');
+      const stats = clawmem.query.getStats(cfg.memoryDbPath);
+      console.log('\n=== clawmem stats ===');
       console.log(`Members:  ${stats.members}`);
       console.log(`Facts:    ${stats.facts}`);
       console.log(`Topics:   ${stats.topics}`);
@@ -80,12 +80,12 @@ async function main() {
     case 'search': {
       const query = args.slice(1).join(' ');
       if (!query) {
-        console.log('Usage: chatmem search <query>');
+        console.log('Usage: clawmem search <query>');
         process.exit(1);
       }
 
-      const facts = chatmem.query.searchFacts(cfg.memoryDbPath, query);
-      const topics = chatmem.query.searchTopics(cfg.memoryDbPath, query);
+      const facts = clawmem.query.searchFacts(cfg.memoryDbPath, query);
+      const topics = clawmem.query.searchTopics(cfg.memoryDbPath, query);
 
       if (facts.length > 0) {
         console.log('\n--- Facts ---');
@@ -111,11 +111,11 @@ async function main() {
     case 'who': {
       const keyword = args.slice(1).join(' ');
       if (!keyword) {
-        console.log('Usage: chatmem who <keyword>');
+        console.log('Usage: clawmem who <keyword>');
         process.exit(1);
       }
 
-      const members = chatmem.query.whoKnows(cfg.memoryDbPath, keyword);
+      const members = clawmem.query.whoKnows(cfg.memoryDbPath, keyword);
       if (members.length > 0) {
         console.log(`\nMembers who know about "${keyword}":`);
         for (const m of members) {
@@ -131,7 +131,7 @@ async function main() {
     }
 
     default:
-      console.log(`chatmem — Lightweight structured memory for community chats
+      console.log(`clawmem — Lightweight structured memory for community chats
 
 Commands:
   init [--force]                    Create memory database
@@ -141,13 +141,13 @@ Commands:
   who <keyword>                     Find members by expertise
 
 Options:
-  --config <path>                   Path to chatmem.json config file
+  --config <path>                   Path to clawmem.json config file
 
 Environment variables:
-  CHATMEM_DB_PATH                   Path to memory database
-  CHATMEM_LLM_BASE_URL             LLM API base URL (OpenAI-compatible)
-  CHATMEM_LLM_API_KEY              LLM API key
-  CHATMEM_LLM_MODEL                LLM model name
+  CLAWMEM_DB_PATH                   Path to memory database
+  CLAWMEM_LLM_BASE_URL             LLM API base URL (OpenAI-compatible)
+  CLAWMEM_LLM_API_KEY              LLM API key
+  CLAWMEM_LLM_MODEL                LLM model name
 `);
   }
 }
@@ -157,9 +157,9 @@ function createAdapter(sourceConfig) {
 
   switch (type) {
     case 'sqlite':
-      return chatmem.adapters.sqlite.create(sourceConfig);
+      return clawmem.adapters.sqlite.create(sourceConfig);
     case 'jsonl':
-      return chatmem.adapters.jsonl.create(sourceConfig);
+      return clawmem.adapters.jsonl.create(sourceConfig);
     case 'custom':
       if (sourceConfig.adapterPath) {
         const custom = require(path.resolve(sourceConfig.adapterPath));

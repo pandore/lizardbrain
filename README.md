@@ -1,66 +1,59 @@
-# chatmem
+# clawmem
 
-Lightweight structured memory extraction for community chats. Reads messages from any source, extracts knowledge (members, facts, topics) via any LLM, stores in a searchable SQLite database with full-text search.
+Lightweight structured memory for community chats. Reads messages from any source, extracts knowledge (members, facts, topics) via any LLM, stores in a searchable SQLite database with full-text search.
 
-**Zero dependencies.** Uses Node.js built-in modules and the system `sqlite3` CLI.
+Born from the [OpenClaw](https://github.com/open-claw/openclaw) ecosystem — built to give AI agents persistent memory of group conversations. Works standalone with any chat source and any LLM provider.
 
-## Why
-
-Community chats generate valuable knowledge that gets buried in scroll. chatmem runs as a background job, reads new messages, and builds a structured knowledge base that can be queried by humans or AI agents.
+**Zero dependencies.** Node.js built-in modules + system `sqlite3` CLI. Nothing to install.
 
 ## How It Works
 
 ```
 [Chat Source] → [Adapter] → [LLM Extraction] → [SQLite + FTS5]
-     ↑                            ↑                    ↑
-  Any SQLite DB          Any OpenAI-compatible     Searchable with
-  JSONL file             API (OpenAI, Gemini,      full-text search
-  Custom adapter         Ollama, Groq, etc.)
 ```
 
-Messages are batched and sent to an LLM that extracts:
-- **Members** — who's in the chat, their expertise, projects
-- **Facts** — tools, techniques, opinions, resources mentioned
-- **Topics** — discussion threads with summaries and participants
+1. **Adapter** reads new messages from your chat database (SQLite, JSONL, or custom)
+2. **LLM** extracts structured knowledge — members, facts, topics — via any OpenAI-compatible API
+3. **SQLite + FTS5** stores everything with full-text search, auto-synced indexes, and deduplication
 
-Everything is stored in SQLite with FTS5 indexes for fast search.
+Runs incrementally: tracks a cursor, only processes new messages each run. Designed to run on a cron every 15 minutes.
 
 ## Quick Start
 
 ```bash
-# Prerequisites: Node.js >= 18, sqlite3 CLI
-git clone https://github.com/pandore/chatmem
-cd chatmem
+# Clone
+git clone https://github.com/pandore/clawmem
+cd clawmem
 
 # Create config
-cp examples/chatmem.json chatmem.json
-# Edit chatmem.json — set your source DB path and LLM settings
+cp examples/clawmem.json clawmem.json
+# Edit clawmem.json — point to your chat DB and LLM
 
 # Initialize memory database
 node src/cli.js init
 
 # Run extraction
-CHATMEM_LLM_API_KEY=your-key node src/cli.js extract
+CLAWMEM_LLM_API_KEY=your-key node src/cli.js extract
 
-# Check results
+# Query
 node src/cli.js stats
-node src/cli.js search "machine learning"
+node src/cli.js search "RAG pipeline"
 node src/cli.js who "python"
 ```
 
 ## Configuration
 
-Create a `chatmem.json` in your working directory:
+Create `clawmem.json` in your working directory:
 
 ```json
 {
-  "memoryDbPath": "./chatmem.db",
+  "memoryDbPath": "./clawmem.db",
   "batchSize": 40,
   "minMessages": 5,
 
   "llm": {
     "baseUrl": "https://api.openai.com/v1",
-    "model": "gpt-4o-mini"
+    "model": "gpt-5-nano"
   },
 
   "source": {
@@ -78,23 +71,31 @@ Create a `chatmem.json` in your working directory:
 }
 ```
 
+API key goes in `.env`, environment variable (`CLAWMEM_LLM_API_KEY`), or directly in config.
+
 ### LLM Providers
 
-chatmem works with any OpenAI-compatible API:
+clawmem works with any OpenAI-compatible chat completions API. Pick whatever fits your budget:
 
-| Provider | `baseUrl` | `model` |
-|----------|-----------|---------|
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
-| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash` |
-| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
-| Ollama | `http://localhost:11434/v1` | `llama3.2` |
-| LM Studio | `http://localhost:1234/v1` | `local-model` |
+| Provider | `baseUrl` | Recommended model | Cost (per 1M tokens) |
+|----------|-----------|-------------------|----------------------|
+| OpenAI | `https://api.openai.com/v1` | `gpt-5-nano` | $0.05 / $0.40 |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash-lite` | $0.10 / $0.40 |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-instruct` | $0.10 / $0.32 |
+| Mistral | `https://api.mistral.ai/v1` | `ministral-3b-2512` | $0.10 / $0.10 |
+| Anthropic | `https://api.anthropic.com/v1/` | `claude-haiku-4.5` | $1.00 / $5.00 |
+| Ollama | `http://localhost:11434/v1` | `qwen2.5:7b` | free (local) |
+| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-4-scout` | $0.08 / $0.30 |
+| Together AI | `https://api.together.xyz/v1` | `meta-llama/Llama-3.1-8B-Instruct-Turbo` | ~$0.05 |
+| LM Studio | `http://localhost:1234/v1` | any local model | free (local) |
 
-API key can be set via config, environment variable (`CHATMEM_LLM_API_KEY`), or `.env` file.
+For extraction tasks, cheap/fast models work great. You don't need a frontier model to pull facts out of chat messages.
 
 ### Source Adapters
 
 #### SQLite (default)
+
+Point at any SQLite database with a messages table:
 
 ```json
 {
@@ -113,45 +114,38 @@ API key can be set via config, environment variable (`CHATMEM_LLM_API_KEY`), or 
 }
 ```
 
+Works out of the box with OpenClaw's LCM database, Telegram export databases, or any custom schema.
+
 #### JSONL
+
+One JSON object per line:
 
 ```json
 {
   "source": {
     "type": "jsonl",
     "path": "./messages.jsonl",
-    "fields": {
-      "id": "id",
-      "content": "text",
-      "sender": "from",
-      "timestamp": "date"
-    }
+    "fields": { "id": "id", "content": "text", "sender": "from", "timestamp": "date" }
   }
 }
 ```
-
-Each line: `{"id": "1", "from": "Alice", "text": "Hello!", "date": "2026-01-01"}`
 
 #### Custom Adapter
 
+For anything else, point to a JS file:
+
 ```json
-{
-  "source": {
-    "type": "custom",
-    "adapterPath": "./my-adapter.js"
-  }
-}
+{ "source": { "type": "custom", "adapterPath": "./my-adapter.js" } }
 ```
 
-Your adapter exports:
-
 ```js
+// my-adapter.js
 module.exports = {
   name: 'my-source',
   validate() { return { ok: true }; },
   getMessages(afterId) {
     // Return array of { id, content, sender, timestamp }
-    return [...];
+    return [...]
   }
 };
 ```
@@ -159,81 +153,78 @@ module.exports = {
 ## CLI
 
 ```
-chatmem init [--force]                    Create memory database
-chatmem extract [--dry-run] [--reprocess] Run extraction pipeline
-chatmem stats                             Show database statistics
-chatmem search <query>                    Full-text search facts and topics
-chatmem who <keyword>                     Find members by expertise
+clawmem init [--force]                    Create memory database
+clawmem extract [--dry-run] [--reprocess] Run extraction pipeline
+clawmem stats                             Show database statistics
+clawmem search <query>                    Full-text search facts and topics
+clawmem who <keyword>                     Find members by expertise
 ```
 
 ## Programmatic API
 
 ```js
-const chatmem = require('chatmem');
+const clawmem = require('clawmem');
 
 // Initialize
-chatmem.init('./memory.db');
+clawmem.init('./memory.db');
 
 // Create adapter
-const adapter = chatmem.adapters.sqlite.create({
+const adapter = clawmem.adapters.sqlite.create({
   path: './chat.db',
   table: 'messages',
   columns: { id: 'id', content: 'text', sender: 'author', timestamp: 'created_at' },
 });
 
 // Extract
-await chatmem.extract(adapter, './memory.db', {
-  batchSize: 40,
-  minMessages: 5,
+await clawmem.extract(adapter, './memory.db', {
   llm: {
     baseUrl: 'https://api.openai.com/v1',
     apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-nano',
   },
 });
 
 // Query
-const facts = chatmem.query.searchFacts('./memory.db', 'kubernetes');
-const experts = chatmem.query.whoKnows('./memory.db', 'python');
-const topics = chatmem.query.searchTopics('./memory.db', 'deployment');
-const stats = chatmem.query.getStats('./memory.db');
+const facts = clawmem.query.searchFacts('./memory.db', 'kubernetes');
+const experts = clawmem.query.whoKnows('./memory.db', 'python');
+const topics = clawmem.query.searchTopics('./memory.db', 'deployment');
+const stats = clawmem.query.getStats('./memory.db');
 ```
 
 ## Cron Setup
 
-Run extraction every 15 minutes:
-
 ```bash
-*/15 * * * * cd /path/to/project && CHATMEM_LLM_API_KEY=key node src/cli.js extract >> /tmp/chatmem.log 2>&1
+*/15 * * * * cd /path/to/project && CLAWMEM_LLM_API_KEY=key node src/cli.js extract >> /tmp/clawmem.log 2>&1
 ```
 
 ## Schema
 
-chatmem creates these tables:
+clawmem creates these tables in SQLite:
 
-- `members` — username, display_name, expertise, projects, first/last seen
-- `facts` — category, content, source member, tags, confidence, date
-- `topics` — name, summary, participants, tags, date
-- `extraction_state` — cursor position, counters
-- `*_fts` — FTS5 full-text search indexes (auto-synced via triggers)
+| Table | Contents |
+|-------|----------|
+| `members` | username, display_name, expertise, projects, first/last seen |
+| `facts` | category, content, source member, tags, confidence, date |
+| `topics` | name, summary, participants, tags, date |
+| `extraction_state` | cursor position, run counters |
+| `*_fts` | FTS5 full-text search indexes (auto-synced via triggers) |
 
-Query directly with sqlite3:
+Query directly:
 
 ```bash
-# Search facts
-sqlite3 -json chatmem.db "SELECT * FROM facts_fts WHERE facts_fts MATCH 'docker'"
-
-# Find experts
-sqlite3 -json chatmem.db "SELECT display_name, expertise FROM members WHERE expertise LIKE '%python%'"
-
-# Recent topics
-sqlite3 -json chatmem.db "SELECT name, summary FROM topics ORDER BY created_at DESC LIMIT 10"
+sqlite3 -json clawmem.db "SELECT * FROM facts_fts WHERE facts_fts MATCH 'docker'"
+sqlite3 -json clawmem.db "SELECT display_name, expertise FROM members WHERE expertise LIKE '%python%'"
+sqlite3 -json clawmem.db "SELECT name, summary FROM topics ORDER BY created_at DESC LIMIT 10"
 ```
 
 ## Requirements
 
 - Node.js >= 18 (uses built-in `fetch`)
-- `sqlite3` CLI with FTS5 support (standard on macOS and most Linux)
+- `sqlite3` CLI with FTS5 support (included on macOS and most Linux distros)
+
+## Background
+
+Built as the memory layer for [LEVI](https://github.com/pandore/limbai-tech), an AI community agent running on [OpenClaw](https://github.com/open-claw/openclaw) in the LIMB.AI/TECH Telegram group. Extracted into a standalone library because every community chat deserves searchable memory.
 
 ## License
 

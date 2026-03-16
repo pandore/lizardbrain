@@ -11,7 +11,7 @@ async function run(adapter, memoryDbPath, config, options = {}) {
 
   const log = (msg) => console.log(msg);
 
-  log(`[${new Date().toISOString()}] chatmem extraction`);
+  log(`[${new Date().toISOString()}] clawmem extraction`);
   log(`Memory DB: ${memoryDbPath}`);
   log(`Source: ${adapter.name}`);
 

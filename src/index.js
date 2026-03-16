@@ -1,28 +1,28 @@
 /**
- * chatmem — Lightweight structured memory extraction for community chats.
+ * clawmem — Lightweight structured memory extraction for community chats.
  *
  * Usage (programmatic):
  *
- *   const chatmem = require('chatmem');
+ *   const clawmem = require('clawmem');
  *
  *   // Initialize database
- *   chatmem.init('./my-memory.db');
+ *   clawmem.init('./my-memory.db');
  *
  *   // Create a source adapter
- *   const adapter = chatmem.adapters.sqlite.create({
+ *   const adapter = clawmem.adapters.sqlite.create({
  *     path: './chat.db',
  *     table: 'messages',
  *     columns: { id: 'id', content: 'text', sender: 'author', timestamp: 'created_at' },
  *   });
  *
  *   // Run extraction
- *   await chatmem.extract(adapter, './my-memory.db', {
+ *   await clawmem.extract(adapter, './my-memory.db', {
  *     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-...', model: 'gpt-4o-mini' },
  *   });
  *
  *   // Query
- *   chatmem.query.searchFacts('./my-memory.db', 'machine learning');
- *   chatmem.query.whoKnows('./my-memory.db', 'python');
+ *   clawmem.query.searchFacts('./my-memory.db', 'machine learning');
+ *   clawmem.query.whoKnows('./my-memory.db', 'python');
  */
 
 const schema = require('./schema');

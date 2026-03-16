@@ -1,10 +1,10 @@
 {
-  "name": "chatmem",
+  "name": "clawmem",
   "version": "0.1.0",
   "description": "Lightweight structured memory extraction for community chats. Zero dependencies, model-agnostic.",
   "main": "src/index.js",
   "bin": {
-    "chatmem": "src/cli.js"
+    "clawmem": "src/cli.js"
   },
   "scripts": {
     "init": "node src/cli.js init",
@@ -20,13 +20,14 @@
     "sqlite",
     "fts5",
     "llm",
-    "knowledge-base"
+    "knowledge-base",
+    "openclaw"
   ],
   "author": "Oleksii Nikitin",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pandore/chatmem"
+    "url": "https://github.com/pandore/clawmem"
   },
   "engines": {
     "node": ">=18.0.0"
