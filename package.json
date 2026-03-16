@@ -1,0 +1,34 @@
+{
+  "name": "chatmem",
+  "version": "0.1.0",
+  "description": "Lightweight structured memory extraction for community chats. Zero dependencies, model-agnostic.",
+  "main": "src/index.js",
+  "bin": {
+    "chatmem": "src/cli.js"
+  },
+  "scripts": {
+    "init": "node src/cli.js init",
+    "extract": "node src/cli.js extract",
+    "stats": "node src/cli.js stats",
+    "test": "node test/run.js"
+  },
+  "keywords": [
+    "chat",
+    "memory",
+    "extraction",
+    "community",
+    "sqlite",
+    "fts5",
+    "llm",
+    "knowledge-base"
+  ],
+  "author": "Oleksii Nikitin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pandore/chatmem"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

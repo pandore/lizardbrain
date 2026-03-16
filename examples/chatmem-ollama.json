@@ -1,0 +1,20 @@
+{
+  "memoryDbPath": "./chatmem.db",
+
+  "llm": {
+    "baseUrl": "http://localhost:11434/v1",
+    "apiKey": "ollama",
+    "model": "llama3.2"
+  },
+
+  "source": {
+    "type": "jsonl",
+    "path": "./messages.jsonl",
+    "fields": {
+      "id": "id",
+      "content": "text",
+      "sender": "from",
+      "timestamp": "date"
+    }
+  }
+}

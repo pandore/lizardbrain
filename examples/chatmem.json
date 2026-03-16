@@ -1,0 +1,23 @@
+{
+  "memoryDbPath": "./chatmem.db",
+  "batchSize": 40,
+  "minMessages": 5,
+
+  "llm": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+
+  "source": {
+    "type": "sqlite",
+    "path": "./chat.db",
+    "table": "messages",
+    "columns": {
+      "id": "id",
+      "content": "content",
+      "sender": "sender_name",
+      "timestamp": "created_at"
+    },
+    "filter": "role = 'user'"
+  }
+}

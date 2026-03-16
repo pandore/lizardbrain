@@ -1,0 +1,20 @@
+{
+  "memoryDbPath": "./chatmem.db",
+
+  "llm": {
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-2.5-flash"
+  },
+
+  "source": {
+    "type": "sqlite",
+    "path": "/path/to/chat.db",
+    "table": "messages",
+    "columns": {
+      "id": "id",
+      "content": "text",
+      "sender": "author",
+      "timestamp": "sent_at"
+    }
+  }
+}
