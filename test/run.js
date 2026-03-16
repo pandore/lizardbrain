@@ -153,7 +153,7 @@ function testStore() {
   const ragExperts = store.whoKnows(MEMORY_DB, 'RAG');
   assert(ragExperts.length === 1, `Found ${ragExperts.length} RAG experts (expected 1)`);
 
-  // Dedup: insert same fact again
+  // Dedup: insert same fact again (exact match)
   store.processExtraction(MEMORY_DB, {
     members: [{ display_name: 'Alice', username: 'alice', expertise: 'RAG, Python', projects: 'pipeline, new-project' }],
     facts: [{ category: 'tool', content: 'LangChain works well for RAG with chunk size 512', source_member: 'alice', tags: 'rag', confidence: 0.9 }],
@@ -162,7 +162,18 @@ function testStore() {
 
   const stats2 = store.getStats(MEMORY_DB);
   assert(stats2.members === 2, `Still ${stats2.members} members after upsert (expected 2)`);
-  assert(stats2.facts === 2, `Still ${stats2.facts} facts — dedup worked (expected 2)`);
+  assert(stats2.facts === 2, `Still ${stats2.facts} facts — exact dedup worked (expected 2)`);
+
+  // Dedup: insert semantically similar fact (LLM rephrased it)
+  store.processExtraction(MEMORY_DB, {
+    members: [],
+    facts: [{ category: 'tool', content: 'LangChain is effective for RAG pipelines, especially with a chunk size of 512 tokens', source_member: 'alice', tags: 'rag, langchain', confidence: 0.9 }],
+    topics: [{ name: 'Comparing RAG Pipeline Tools', summary: 'LangChain vs LlamaIndex comparison', participants: 'Alice, Bob', tags: 'rag' }],
+  }, '2026-03-15');
+
+  const stats3 = store.getStats(MEMORY_DB);
+  assert(stats3.facts === 2, `Still ${stats3.facts} facts — semantic dedup worked (expected 2)`);
+  assert(stats3.topics === 1, `Still ${stats3.topics} topics — topic dedup worked (expected 1)`);
 
   // Check member expertise was merged
   const alice = store.searchMembers(MEMORY_DB, 'Alice');

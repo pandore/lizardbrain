@@ -60,19 +60,34 @@ function upsertMember(dbPath, member, messageDate) {
 }
 
 function insertFact(dbPath, fact, memberId, messageDate) {
-  const prefix = db.esc((fact.content || '').substring(0, 100).toLowerCase());
-  const memberClause = memberId ? `source_member_id = ${memberId}` : 'source_member_id IS NULL';
-  const existing = db.read(dbPath,
-    `SELECT id FROM facts WHERE LOWER(SUBSTR(content, 1, 100)) = '${prefix}' AND ${memberClause} AND message_date = '${db.esc(messageDate)}'`
-  );
+  // Dedup strategy: extract key terms from content and check FTS for similar existing facts.
+  // This catches semantically similar facts even when LLM rephrases them.
+  const content = fact.content || '';
 
-  if (existing.length > 0) return false;
+  // 1. Exact prefix match (fast path)
+  const prefix = db.esc(content.substring(0, 80).toLowerCase());
+  const exactMatch = db.read(dbPath,
+    `SELECT id FROM facts WHERE LOWER(SUBSTR(content, 1, 80)) = '${prefix}'`
+  );
+  if (exactMatch.length > 0) return false;
+
+  // 2. FTS similarity check: use first 2 distinctive keywords to find similar existing facts.
+  //    Two keywords is enough to identify a topic ("langchain AND rag", "hetzner AND vps").
+  //    Using more risks missing rephrased duplicates.
+  const keywords = extractKeywords(content);
+  if (keywords.length >= 2) {
+    const ftsQuery = db.esc(keywords.slice(0, 2).join(' AND '));
+    const ftsMatch = db.read(dbPath,
+      `SELECT id FROM facts WHERE id IN (SELECT rowid FROM facts_fts WHERE facts_fts MATCH '${ftsQuery}') AND category = '${db.esc(fact.category)}' LIMIT 1`
+    );
+    if (ftsMatch.length > 0) return false;
+  }
 
   db.write(dbPath, `
     INSERT INTO facts (category, content, source_member_id, tags, confidence, message_date)
     VALUES (
       '${db.esc(fact.category)}',
-      '${db.esc(fact.content)}',
+      '${db.esc(content)}',
       ${memberId || 'NULL'},
       '${db.esc(fact.tags || '')}',
       ${parseFloat(fact.confidence) || 0.8},
@@ -82,7 +97,39 @@ function insertFact(dbPath, fact, memberId, messageDate) {
   return true;
 }
 
+function extractKeywords(text) {
+  // Extended stopwords: common English words + common verbs/adjectives that don't carry topic signal
+  const stopwords = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had',
+    'do','does','did','will','would','shall','should','may','might','must','can','could',
+    'and','but','or','nor','not','no','so','if','then','than','that','this','these','those',
+    'it','its','of','in','on','at','to','for','with','by','from','as','into','about','between',
+    'through','during','before','after','above','below','up','down','out','off','over','under',
+    'such','very','too','also','just','only','more','most','other','some','any','each','every',
+    'all','both','few','many','much','own','same','well','still','already','even',
+    'works','working','worked','work','used','uses','using','use','like','good','best','better',
+    'great','make','makes','made','making','effective','especially','particularly','really',
+    'quite','rather','described','features','featuring','recommended','available','based',
+    'allows','approach','approaches','current','currently','different','general','generally',
+    'include','includes','including','known','large','small','new','old','first','last',
+    'high','low','long','short','full','specific','specifically','similar','common','commonly',
+    'provides','provides','support','supports','system','systems','method','methods','called']);
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopwords.has(w));
+}
+
 function insertTopic(dbPath, topic, messageDate) {
+  // Dedup: check for existing topic with similar name via FTS (2 keywords)
+  const nameKeywords = extractKeywords(topic.name);
+  if (nameKeywords.length >= 2) {
+    const ftsQuery = db.esc(nameKeywords.slice(0, 2).join(' AND '));
+    const existing = db.read(dbPath,
+      `SELECT id FROM topics WHERE id IN (SELECT rowid FROM topics_fts WHERE topics_fts MATCH '${ftsQuery}') LIMIT 1`
+    );
+    if (existing.length > 0) return false;
+  }
+
   db.write(dbPath, `
     INSERT INTO topics (name, summary, participants, message_date, tags)
     VALUES (
