@@ -16,7 +16,7 @@ Born from the [OpenClaw](https://github.com/open-claw/openclaw) ecosystem — bu
 2. **LLM** extracts structured knowledge — members, facts, topics — via any OpenAI-compatible API
 3. **SQLite + FTS5** stores everything with full-text search, auto-synced indexes, and deduplication
 
-Runs incrementally: tracks a cursor, only processes new messages each run. Designed to run on a cron every 15 minutes.
+Runs incrementally: tracks a cursor, only processes new messages each run. Designed to run on a cron (every 1-2 hours recommended).
 
 ## Quick Start
 
@@ -117,6 +117,25 @@ Point at any SQLite database with a messages table:
 
 Works out of the box with OpenClaw's LCM database, Telegram export databases, or any custom schema.
 
+#### Conversation Filtering (group-only extraction)
+
+If your source has both group chats and DMs, you can restrict extraction to group conversations only:
+
+```json
+{
+  "source": {
+    "type": "sqlite",
+    "path": "./chat.db",
+    "conversationFilter": {
+      "column": "conversation_id",
+      "detectGroup": { "contentColumn": "content", "marker": "is_group_chat" }
+    }
+  }
+}
+```
+
+clawmem auto-detects which conversations are group chats (>50% of messages contain the marker) and excludes DMs/system sessions. This prevents private messages from leaking into shared memory.
+
 #### JSONL
 
 One JSON object per line:
@@ -159,6 +178,7 @@ clawmem extract [--dry-run] [--reprocess] Run extraction pipeline
 clawmem stats                             Show database statistics
 clawmem search <query>                    Full-text search facts and topics
 clawmem who <keyword>                     Find members by expertise
+clawmem roster [--output path]            Generate compact member roster
 ```
 
 ## Programmatic API
@@ -187,15 +207,66 @@ await clawmem.extract(adapter, './memory.db', {
 
 // Query
 const facts = clawmem.query.searchFacts('./memory.db', 'kubernetes');
+const highConf = clawmem.query.searchFacts('./memory.db', 'kubernetes', 15, 0.75); // confidence >= 0.75
 const experts = clawmem.query.whoKnows('./memory.db', 'python');
 const topics = clawmem.query.searchTopics('./memory.db', 'deployment');
 const stats = clawmem.query.getStats('./memory.db');
+
+// Generate member roster
+const roster = clawmem.query.generateRoster('./memory.db');
+fs.writeFileSync('./MEMBERS.md', roster.content);
+```
+
+## Roster Generation
+
+Generate a compact markdown roster of all members with their expertise and projects:
+
+```bash
+# Print to stdout
+clawmem roster
+
+# Write to file
+clawmem roster --output ./MEMBERS.md
+
+# Auto-generate after every extraction (set in config)
+# "rosterPath": "./MEMBERS.md"
+```
+
+Output format (~30-50 tokens per member):
+```
+# Community Members
+
+- **Alice** — RAG, LangChain, Python | builds: pipeline, search-tool
+- **Bob** — LlamaIndex, embeddings | builds: pdf-processor
+```
+
+This is designed to be loaded into an AI agent's context window for passive awareness of community members. At 100 members it's ~3,000 tokens — cheap enough to always include.
+
+## Confidence Scores
+
+Facts are scored for confidence during extraction:
+
+| Score | Meaning | Example |
+|-------|---------|---------|
+| 0.9+ | Verified specifics | "Claude Opus costs $15/M output tokens" |
+| 0.75-0.89 | Opinions, experiences | "LlamaIndex works better for large PDFs" |
+| 0.5-0.74 | Secondhand, speculation | "I heard they might release a new model" |
+
+Filter by confidence in queries:
+
+```js
+// Only high-confidence facts
+clawmem.query.searchFacts('./memory.db', 'pricing', 15, 0.75);
 ```
 
 ## Cron Setup
 
 ```bash
-*/15 * * * * cd /path/to/project && CLAWMEM_LLM_API_KEY=key node src/cli.js extract >> /tmp/clawmem.log 2>&1
+# Every 2 hours — gives enough messages per batch for good extraction quality
+0 */2 * * * cd /path/to/project && CLAWMEM_LLM_API_KEY=key node src/cli.js extract >> /tmp/clawmem.log 2>&1
+
+# With auto-roster generation
+0 */2 * * * cd /path/to/project && CLAWMEM_LLM_API_KEY=key node src/cli.js extract --roster ./MEMBERS.md >> /tmp/clawmem.log 2>&1
 ```
 
 ## Schema

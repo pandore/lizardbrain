@@ -6,7 +6,7 @@ const llm = require('./llm');
 const store = require('./store');
 
 async function run(adapter, memoryDbPath, config, options = {}) {
-  const { dryRun = false, reprocess = false } = options;
+  const { dryRun = false, reprocess = false, rosterPath = null } = options;
   const { batchSize = 40, minMessages = 5 } = config;
 
   const log = (msg) => console.log(msg);
@@ -104,6 +104,14 @@ async function run(adapter, memoryDbPath, config, options = {}) {
       factsExtracted: totalFacts,
       topicsExtracted: totalTopics,
     });
+  }
+
+  // Generate roster file if configured
+  if (!dryRun && rosterPath) {
+    const fs = require('fs');
+    const roster = store.generateRoster(memoryDbPath);
+    fs.writeFileSync(rosterPath, roster.content);
+    log(`Roster: ${roster.count} members → ${rosterPath}`);
   }
 
   const summary = {

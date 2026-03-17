@@ -26,12 +26,38 @@ function create(config) {
     columns = {},
     filter = null,
     contentParser = null,
+    conversationFilter = null,
   } = config;
 
   const idCol = columns.id || 'id';
   const contentCol = columns.content || 'content';
   const senderCol = columns.sender || null;
   const timestampCol = columns.timestamp || null;
+
+  // Cache detected group conversation IDs
+  let _groupConvIds = null;
+
+  function detectGroupConversations() {
+    if (_groupConvIds !== null) return _groupConvIds;
+    if (!conversationFilter?.detectGroup) {
+      _groupConvIds = null;
+      return null;
+    }
+
+    const { contentColumn, marker } = conversationFilter.detectGroup;
+    const convCol = conversationFilter.column || 'conversation_id';
+    const col = contentColumn || contentCol;
+
+    const stats = db.read(dbPath,
+      `SELECT ${convCol}, COUNT(*) as total, SUM(CASE WHEN ${col} LIKE '%${db.esc(marker)}%true%' THEN 1 ELSE 0 END) as group_msgs FROM ${table} GROUP BY ${convCol}`
+    );
+
+    _groupConvIds = stats
+      .filter(c => parseInt(c.group_msgs) > parseInt(c.total) * 0.5)
+      .map(c => c[convCol]);
+
+    return _groupConvIds;
+  }
 
   return {
     name: 'sqlite',
@@ -48,12 +74,26 @@ function create(config) {
         return { ok: false, error: `Table '${table}' not found. Available: ${tableNames.join(', ')}` };
       }
 
-      return { ok: true };
+      // Detect group conversations if configured
+      const groupIds = detectGroupConversations();
+      if (conversationFilter?.detectGroup && (!groupIds || groupIds.length === 0)) {
+        return { ok: false, error: 'No group conversations detected in source database' };
+      }
+
+      return { ok: true, groupConversations: groupIds };
     },
 
     getMessages(afterId) {
       let where = `${idCol} > '${db.esc(String(afterId))}'`;
       if (filter) where += ` AND (${filter})`;
+
+      // Apply conversation filter
+      const groupIds = detectGroupConversations();
+      if (groupIds && groupIds.length > 0) {
+        const convCol = conversationFilter.column || 'conversation_id';
+        const idList = groupIds.map(id => `${convCol} = '${db.esc(String(id))}'`).join(' OR ');
+        where += ` AND (${idList})`;
+      }
 
       const selectCols = [idCol, contentCol];
       if (senderCol) selectCols.push(senderCol);

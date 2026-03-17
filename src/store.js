@@ -219,9 +219,11 @@ function getStats(dbPath) {
 
 // --- Query helpers ---
 
-function searchFacts(dbPath, query, limit = 10) {
+function searchFacts(dbPath, query, limit = 15, minConfidence = 0) {
+  let where = `f.id IN (SELECT rowid FROM facts_fts WHERE facts_fts MATCH '${db.esc(query)}')`;
+  if (minConfidence > 0) where += ` AND f.confidence >= ${minConfidence}`;
   return db.read(dbPath,
-    `SELECT f.*, m.display_name as source FROM facts f LEFT JOIN members m ON f.source_member_id = m.id WHERE f.id IN (SELECT rowid FROM facts_fts WHERE facts_fts MATCH '${db.esc(query)}') ORDER BY f.created_at DESC LIMIT ${limit}`
+    `SELECT f.*, m.display_name as source FROM facts f LEFT JOIN members m ON f.source_member_id = m.id WHERE ${where} ORDER BY f.confidence DESC, f.created_at DESC LIMIT ${limit}`
   );
 }
 
@@ -243,6 +245,21 @@ function whoKnows(dbPath, keyword) {
   );
 }
 
+function generateRoster(dbPath, { maxExpertise = 5, maxProjects = 3 } = {}) {
+  const members = db.read(dbPath, 'SELECT display_name, expertise, projects FROM members ORDER BY display_name');
+  const lines = ['# Community Members', ''];
+  for (const m of members) {
+    const name = m.display_name || '';
+    const exp = (m.expertise || '').split(',').slice(0, maxExpertise).map(s => s.trim()).filter(Boolean).join(', ');
+    const proj = (m.projects || '').split(',').slice(0, maxProjects).map(s => s.trim()).filter(Boolean).join(', ');
+    let line = `- **${name}**`;
+    if (exp) line += ` — ${exp}`;
+    if (proj) line += ` | builds: ${proj}`;
+    lines.push(line);
+  }
+  return { content: lines.join('\n') + '\n', count: members.length };
+}
+
 module.exports = {
   processExtraction,
   getState,
@@ -253,4 +270,5 @@ module.exports = {
   searchTopics,
   searchMembers,
   whoKnows,
+  generateRoster,
 };

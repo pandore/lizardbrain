@@ -49,6 +49,7 @@ module.exports = {
     searchMembers: store.searchMembers,
     whoKnows: store.whoKnows,
     getStats: store.getStats,
+    generateRoster: store.generateRoster,
   },
 
   // Adapters

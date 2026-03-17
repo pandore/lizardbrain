@@ -1,6 +1,6 @@
 {
   "name": "clawmem",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lightweight structured memory extraction for community chats. Zero dependencies, model-agnostic.",
   "main": "src/index.js",
   "bin": {

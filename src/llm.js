@@ -14,8 +14,8 @@ Extract and return JSON with exactly this structure:
     {
       "username": "string or null",
       "display_name": "string",
-      "expertise": "comma-separated skills/knowledge areas mentioned",
-      "projects": "comma-separated projects/tools they mentioned working on"
+      "expertise": "comma-separated skills/knowledge areas demonstrated",
+      "projects": "comma-separated projects/tools they actively use or build"
     }
   ],
   "facts": [
@@ -40,10 +40,19 @@ Extract and return JSON with exactly this structure:
 Rules:
 - Only extract information explicitly stated in messages, don't infer
 - Skip greetings, small talk, and messages with no informational content
-- For members, only include those who shared expertise or project info
-- Confidence: 1.0 for stated facts, 0.7-0.9 for opinions, 0.5-0.7 for uncertain claims
+- Extract durable knowledge useful months later, not ephemeral news
+
+Member rules:
+- "expertise": only list skills where the person shows SUBSTANTIVE knowledge, not casual mentions
+- "projects": only list tools/products a person ACTIVELY USES or BUILDS. Recommending, reviewing, or sharing news about a tool does NOT make it their project
+- Only include members who shared genuine expertise or project info
+
+Fact rules:
+- Category must match content meaning: "tool" for tool-specific info, "technique" for methods/workflows, "opinion" for personal views, "experience" for firsthand accounts, "resource" for links/courses/repos, "announcement" for releases/launches
+- Confidence: 0.9+ for verified specifics (pricing, versions, benchmarks). 0.75-0.85 for opinions and personal experiences. 0.5-0.7 for secondhand claims or speculation
 - Tags should be lowercase, useful for search
-- If no meaningful content found, return empty arrays`;
+
+If no meaningful content found, return empty arrays`;
 
 function formatMessages(messages) {
   return messages.map(m => {

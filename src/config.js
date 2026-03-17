@@ -9,6 +9,7 @@ const DEFAULTS = {
   memoryDbPath: './clawmem.db',
   batchSize: 40,
   minMessages: 5,
+  rosterPath: null,
   llm: {
     baseUrl: '',
     apiKey: '',
@@ -63,6 +64,7 @@ function load(configPath) {
     memoryDbPath: fileConfig.memoryDbPath || process.env.CLAWMEM_DB_PATH || DEFAULTS.memoryDbPath,
     batchSize: fileConfig.batchSize || parseInt(process.env.CLAWMEM_BATCH_SIZE) || DEFAULTS.batchSize,
     minMessages: fileConfig.minMessages || parseInt(process.env.CLAWMEM_MIN_MESSAGES) || DEFAULTS.minMessages,
+    rosterPath: fileConfig.rosterPath || process.env.CLAWMEM_ROSTER_PATH || DEFAULTS.rosterPath,
     llm: {
       baseUrl: fileConfig.llm?.baseUrl || process.env.CLAWMEM_LLM_BASE_URL || process.env.LLM_BASE_URL || DEFAULTS.llm.baseUrl,
       apiKey: fileConfig.llm?.apiKey || process.env.CLAWMEM_LLM_API_KEY || process.env.LLM_API_KEY || DEFAULTS.llm.apiKey,

@@ -1,0 +1,25 @@
+{
+  "memoryDbPath": "./clawmem.db",
+  "rosterPath": "../MEMBERS.md",
+
+  "llm": {
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-3-flash-preview"
+  },
+
+  "source": {
+    "type": "sqlite",
+    "path": "~/.openclaw/lcm.db",
+    "table": "messages",
+    "columns": {
+      "id": "message_id",
+      "content": "content",
+      "timestamp": "created_at"
+    },
+    "filter": "role = 'user'",
+    "conversationFilter": {
+      "column": "conversation_id",
+      "detectGroup": { "contentColumn": "content", "marker": "is_group_chat" }
+    }
+  }
+}

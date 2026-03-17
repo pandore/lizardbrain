@@ -46,9 +46,11 @@ async function main() {
       }
 
       const adapter = createAdapter(cfg.source);
+      const rosterOutput = flag('roster') ? args[args.indexOf('--roster') + 1] : (cfg.rosterPath || null);
       const result = await clawmem.extract(adapter, cfg.memoryDbPath, cfg, {
         dryRun: flag('dry-run'),
         reprocess: flag('reprocess'),
+        rosterPath: rosterOutput,
       });
 
       if (!result.ok) {
@@ -130,6 +132,25 @@ async function main() {
       break;
     }
 
+    case 'roster': {
+      const db = require('./db');
+      if (!db.exists(cfg.memoryDbPath)) {
+        console.log('Memory database not found. Run `clawmem init` first.');
+        process.exit(1);
+      }
+
+      const roster = clawmem.query.generateRoster(cfg.memoryDbPath);
+      const outputIdx = args.indexOf('--output');
+      const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : null;
+      if (outputPath) {
+        fs.writeFileSync(outputPath, roster.content);
+        console.log(`Roster: ${roster.count} members → ${outputPath}`);
+      } else {
+        process.stdout.write(roster.content);
+      }
+      break;
+    }
+
     default:
       console.log(`clawmem — Lightweight structured memory for community chats
 
@@ -139,9 +160,11 @@ Commands:
   stats                             Show database statistics
   search <query>                    Search facts and topics (FTS)
   who <keyword>                     Find members by expertise
+  roster [--output path]            Generate member roster as markdown
 
 Options:
   --config <path>                   Path to clawmem.json config file
+  --roster <path>                   Generate roster after extraction
 
 Environment variables:
   CLAWMEM_DB_PATH                   Path to memory database

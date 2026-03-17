@@ -181,6 +181,94 @@ function testStore() {
   assert(alice.length > 0 && alice[0].projects.includes('new-project'), 'Alice projects merged');
 }
 
+function testConfidenceFiltering() {
+  console.log('\n--- Test: confidence filtering ---');
+
+  // Insert facts with different confidence levels
+  store.processExtraction(MEMORY_DB, {
+    members: [],
+    facts: [
+      { category: 'tool', content: 'High confidence fact about Docker pricing at $5/month', source_member: 'alice', tags: 'docker, pricing', confidence: 0.95 },
+      { category: 'opinion', content: 'Medium confidence opinion about Kubernetes being overkill', source_member: 'bob', tags: 'kubernetes, opinion', confidence: 0.8 },
+      { category: 'tool', content: 'Low confidence rumor about a new AWS service', source_member: 'alice', tags: 'aws, rumor', confidence: 0.5 },
+    ],
+    topics: [],
+  }, '2026-03-16');
+
+  // Search without filter
+  const allFacts = store.searchFacts(MEMORY_DB, 'Docker OR Kubernetes OR AWS');
+  assert(allFacts.length >= 3, `Found ${allFacts.length} facts without filter (expected >= 3)`);
+
+  // Search with minConfidence 0.75
+  const highFacts = store.searchFacts(MEMORY_DB, 'Docker OR Kubernetes OR AWS', 15, 0.75);
+  assert(highFacts.length >= 2, `Found ${highFacts.length} facts with confidence >= 0.75 (expected >= 2)`);
+
+  // Search with minConfidence 0.9
+  const veryHigh = store.searchFacts(MEMORY_DB, 'Docker OR Kubernetes OR AWS', 15, 0.9);
+  assert(veryHigh.length >= 1, `Found ${veryHigh.length} facts with confidence >= 0.9 (expected >= 1)`);
+
+  // Verify ordering: high confidence first
+  if (highFacts.length >= 2) {
+    assert(parseFloat(highFacts[0].confidence) >= parseFloat(highFacts[1].confidence),
+      'Facts ordered by confidence descending');
+  }
+}
+
+function testRoster() {
+  console.log('\n--- Test: roster generation ---');
+
+  const roster = store.generateRoster(MEMORY_DB);
+  assert(roster.count >= 2, `Roster has ${roster.count} members (expected >= 2)`);
+  assert(roster.content.startsWith('# Community Members'), 'Roster starts with header');
+  assert(roster.content.includes('Alice'), 'Roster contains Alice');
+  assert(roster.content.includes('Bob'), 'Roster contains Bob');
+  assert(roster.content.includes('RAG'), 'Roster includes expertise');
+}
+
+function testConversationFilter() {
+  console.log('\n--- Test: conversation filtering ---');
+
+  // Create a source with mixed group/DM conversations
+  const CONV_DB = path.join(TEST_DIR, 'conv-source.db');
+  execSync(`sqlite3 "${CONV_DB}"`, {
+    input: `
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY,
+        conversation_id INTEGER,
+        sender TEXT,
+        content TEXT,
+        timestamp TEXT
+      );
+      -- Group messages (with is_group_chat marker)
+      INSERT INTO messages VALUES (1, 1, 'Alice', 'Group msg with "is_group_chat": true marker about Python', '2026-03-15');
+      INSERT INTO messages VALUES (2, 1, 'Bob', 'Another group msg "is_group_chat": true about RAG', '2026-03-15');
+      INSERT INTO messages VALUES (3, 1, 'Alice', 'Third group "is_group_chat": true message', '2026-03-15');
+      -- DM messages (no marker)
+      INSERT INTO messages VALUES (4, 2, 'Alice', 'Private DM message about secrets', '2026-03-15');
+      INSERT INTO messages VALUES (5, 2, 'Alice', 'Another private DM', '2026-03-15');
+    `,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  const adapter = chatmem.adapters.sqlite.create({
+    path: CONV_DB,
+    table: 'messages',
+    columns: { id: 'id', content: 'content', sender: 'sender', timestamp: 'timestamp' },
+    conversationFilter: {
+      column: 'conversation_id',
+      detectGroup: { contentColumn: 'content', marker: 'is_group_chat' },
+    },
+  });
+
+  const validation = adapter.validate();
+  assert(validation.ok === true, 'Adapter with conversation filter validates');
+  assert(validation.groupConversations?.length === 1, `Detected ${validation.groupConversations?.length} group conversation(s) (expected 1)`);
+
+  const messages = adapter.getMessages('0');
+  assert(messages.length === 3, `Got ${messages.length} messages (expected 3 — group only, no DMs)`);
+  assert(!messages.some(m => m.content.includes('secrets')), 'DM content excluded');
+}
+
 // --- Run ---
 
 try {
@@ -189,6 +277,9 @@ try {
   testAdapter();
   testJsonlAdapter();
   testStore();
+  testConfidenceFiltering();
+  testRoster();
+  testConversationFilter();
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
   cleanup();
