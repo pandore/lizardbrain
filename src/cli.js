@@ -51,6 +51,7 @@ async function main() {
         dryRun: flag('dry-run'),
         reprocess: flag('reprocess'),
         rosterPath: rosterOutput,
+        enrichUrls: !flag('no-enrich'),
       });
 
       if (!result.ok) {
@@ -165,6 +166,7 @@ Commands:
 Options:
   --config <path>                   Path to clawmem.json config file
   --roster <path>                   Generate roster after extraction
+  --no-enrich                       Skip URL metadata enrichment
 
 Environment variables:
   CLAWMEM_DB_PATH                   Path to memory database

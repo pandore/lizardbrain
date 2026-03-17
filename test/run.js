@@ -269,9 +269,36 @@ function testConversationFilter() {
   assert(!messages.some(m => m.content.includes('secrets')), 'DM content excluded');
 }
 
+async function testUrlEnrichment() {
+  console.log('\n--- Test: URL enrichment ---');
+
+  const urlEnricher = require('../src/enrichers/url');
+
+  // Test with a known GitHub repo
+  const messages = [
+    { id: '1', content: 'Check out https://github.com/pandore/clawmem for memory extraction', sender: 'Alice', timestamp: '2026-03-17' },
+    { id: '2', content: 'No URLs in this message', sender: 'Bob', timestamp: '2026-03-17' },
+    { id: '3', content: 'Multiple URLs: https://github.com/pandore/clawmem and https://example.com', sender: 'Alice', timestamp: '2026-03-17' },
+  ];
+
+  const result = await urlEnricher.enrichMessages(messages, { timeoutMs: 10000 });
+  assert(result.enriched >= 1, `Enriched ${result.enriched} URLs (expected >= 1)`);
+
+  // GitHub URL should have been enriched with repo info
+  const msg1 = messages[0].content;
+  assert(msg1.includes('[') && msg1.includes('clawmem'), `GitHub URL enriched: ${msg1.substring(0, 120)}...`);
+
+  // Message without URLs should be unchanged
+  assert(messages[1].content === 'No URLs in this message', 'Non-URL message unchanged');
+
+  // Test with empty messages
+  const emptyResult = await urlEnricher.enrichMessages([]);
+  assert(emptyResult.enriched === 0, 'Empty messages returns 0 enriched');
+}
+
 // --- Run ---
 
-try {
+async function runAll() {
   setup();
   testInit();
   testAdapter();
@@ -280,12 +307,15 @@ try {
   testConfidenceFiltering();
   testRoster();
   testConversationFilter();
+  await testUrlEnrichment();
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
   cleanup();
   process.exit(failed > 0 ? 1 : 0);
-} catch (err) {
+}
+
+runAll().catch(err => {
   console.error(`\nTest crashed: ${err.message}\n${err.stack}`);
   cleanup();
   process.exit(1);
-}
+});

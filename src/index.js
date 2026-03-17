@@ -31,6 +31,7 @@ const store = require('./store');
 const config = require('./config');
 const sqliteAdapter = require('./adapters/sqlite');
 const jsonlAdapter = require('./adapters/jsonl');
+const urlEnricher = require('./enrichers/url');
 
 module.exports = {
   // Schema
@@ -50,6 +51,11 @@ module.exports = {
     whoKnows: store.whoKnows,
     getStats: store.getStats,
     generateRoster: store.generateRoster,
+  },
+
+  // Enrichers
+  enrichers: {
+    url: urlEnricher,
   },
 
   // Adapters

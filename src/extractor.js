@@ -4,9 +4,10 @@
 
 const llm = require('./llm');
 const store = require('./store');
+const urlEnricher = require('./enrichers/url');
 
 async function run(adapter, memoryDbPath, config, options = {}) {
-  const { dryRun = false, reprocess = false, rosterPath = null } = options;
+  const { dryRun = false, reprocess = false, rosterPath = null, enrichUrls = true } = options;
   const { batchSize = 40, minMessages = 5 } = config;
 
   const log = (msg) => console.log(msg);
@@ -66,6 +67,14 @@ async function run(adapter, memoryDbPath, config, options = {}) {
     }, '0');
 
     log(`\nBatch ${i + 1}/${batches.length} (${batch.length} messages)`);
+
+    // Enrich URLs in batch before sending to LLM
+    if (enrichUrls) {
+      const urlResult = await urlEnricher.enrichMessages(batch, config.urlEnrichment);
+      if (urlResult.enriched > 0) {
+        log(`  URLs enriched: ${urlResult.enriched}${urlResult.failed > 0 ? ` (${urlResult.failed} failed)` : ''}`);
+      }
+    }
 
     if (dryRun) {
       log(`  [DRY RUN] First: ${batch[0].content?.substring(0, 80)}...`);

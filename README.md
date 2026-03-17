@@ -217,6 +217,21 @@ const roster = clawmem.query.generateRoster('./memory.db');
 fs.writeFileSync('./MEMBERS.md', roster.content);
 ```
 
+## URL Enrichment
+
+When messages contain URLs, clawmem automatically fetches metadata before sending to the LLM:
+
+- **Web pages**: fetches `<title>` and `og:description` (or `<meta description>`)
+- **GitHub repos**: uses GitHub API to get description + star count
+
+This means the LLM sees:
+```
+Alice: Check out https://github.com/akhavr/nightshift [akhavr/nightshift — Claude Code task management tool | 234 stars]
+```
+instead of just a bare URL — enabling meaningful fact extraction from shared links.
+
+Enabled by default. Disable with `--no-enrich` or `enrichUrls: false` in options.
+
 ## Roster Generation
 
 Generate a compact markdown roster of all members with their expertise and projects:
