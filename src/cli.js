@@ -53,6 +53,7 @@ async function main() {
         reprocess: flag('reprocess'),
         rosterPath: rosterOutput,
         enrichUrls: !flag('no-enrich'),
+        noEmbed: flag('no-embed'),
       });
 
       driver.close();
@@ -72,49 +73,99 @@ async function main() {
 
       const driver = createDriver(cfg.memoryDbPath);
       const stats = clawmem.query.getStats(driver);
-      driver.close();
-
       console.log('\n=== clawmem stats ===');
       console.log(`Members:  ${stats.members}`);
       console.log(`Facts:    ${stats.facts}`);
       console.log(`Topics:   ${stats.topics}`);
+      console.log(`\nDriver:   ${stats.driver}${stats.vectors ? ' (vectors enabled)' : ''}`);
+      console.log(`Search:   ${stats.vectors ? 'hybrid (FTS5 + kNN + RRF)' : 'FTS5'}`);
+
+      if (stats.vectors) {
+        const embeddings = require('./embeddings');
+        const estats = embeddings.getEmbeddingStats(driver);
+        if (estats.dimensions > 0) {
+          console.log(`\nEmbeddings:`);
+          console.log(`  model:      ${estats.model}`);
+          console.log(`  dimensions: ${estats.dimensions}`);
+          console.log(`  facts:      ${estats.facts.embedded}/${estats.facts.total}`);
+          console.log(`  topics:     ${estats.topics.embedded}/${estats.topics.total}`);
+          console.log(`  members:    ${estats.members.embedded}/${estats.members.total}`);
+        }
+      }
+
       console.log(`\nMessages processed: ${stats.messagesProcessed}`);
       console.log(`Last processed ID:  ${stats.lastProcessedId}`);
       console.log(`Last run:           ${stats.lastRun}`);
       console.log('');
+      driver.close();
       break;
     }
 
     case 'search': {
-      const query = args.slice(1).join(' ');
-      if (!query) {
+      const queryText = args.slice(1).filter(a => !a.startsWith('--')).join(' ');
+      if (!queryText) {
         console.log('Usage: clawmem search <query>');
         process.exit(1);
       }
-
       const driver = createDriver(cfg.memoryDbPath);
-      const facts = clawmem.query.searchFacts(driver, query);
-      const topics = clawmem.query.searchTopics(driver, query);
-      driver.close();
+      const { search: hybridSearch } = require('./search');
+      const embCfg = (cfg.embedding?.enabled && cfg.embedding?.apiKey) ? cfg.embedding : null;
+      const result = await hybridSearch(driver, queryText, {
+        limit: parseInt(args[args.indexOf('--limit') + 1]) || 10,
+        ftsOnly: flag('fts-only'),
+        embeddingConfig: embCfg,
+      });
 
-      if (facts.length > 0) {
-        console.log('\n--- Facts ---');
-        for (const f of facts) {
-          console.log(`  [${f.category}] ${f.content}`);
-          if (f.source) console.log(`    — ${f.source}`);
+      if (flag('json')) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`\n[${result.mode} search]\n`);
+        for (const r of result.results) {
+          console.log(`  [${r.source}] ${r.text}`);
+          if (r.member) console.log(`    — ${r.member}`);
+          if (r.confidence) console.log(`    confidence: ${r.confidence}`);
+        }
+        if (result.results.length === 0) console.log(`No results for "${queryText}"`);
+        console.log('');
+      }
+      driver.close();
+      break;
+    }
+
+    case 'embed': {
+      if (!dbExists(cfg.memoryDbPath)) {
+        console.log('Memory database not found. Run `clawmem init` first.');
+        process.exit(1);
+      }
+      if (!cfg.embedding?.enabled) {
+        console.log('Embedding not configured. Add an "embedding" block to clawmem.json with enabled: true.');
+        process.exit(1);
+      }
+      const driver = createDriver(cfg.memoryDbPath);
+      if (!driver.capabilities.vectors) {
+        console.log('Vector search requires better-sqlite3 + sqlite-vec. Install: npm install better-sqlite3 sqlite-vec');
+        driver.close();
+        process.exit(1);
+      }
+      const embeddings = require('./embeddings');
+
+      if (flag('stats')) {
+        const estats = embeddings.getEmbeddingStats(driver);
+        console.log('\n=== embedding stats ===');
+        console.log(`Model:      ${estats.model}`);
+        console.log(`Dimensions: ${estats.dimensions}`);
+        console.log(`Facts:      ${estats.facts.embedded}/${estats.facts.total}`);
+        console.log(`Topics:     ${estats.topics.embedded}/${estats.topics.total}`);
+        console.log(`Members:    ${estats.members.embedded}/${estats.members.total}\n`);
+      } else {
+        const result = await embeddings.backfill(driver, cfg.embedding, { rebuild: flag('rebuild') });
+        if (!result.ok) {
+          console.error(`Embedding failed: ${result.error}`);
+          driver.close();
+          process.exit(1);
         }
       }
-      if (topics.length > 0) {
-        console.log('\n--- Topics ---');
-        for (const t of topics) {
-          console.log(`  ${t.name}: ${t.summary}`);
-          if (t.participants) console.log(`    participants: ${t.participants}`);
-        }
-      }
-      if (facts.length === 0 && topics.length === 0) {
-        console.log(`No results for "${query}"`);
-      }
-      console.log('');
+      driver.close();
       break;
     }
 
@@ -171,21 +222,26 @@ async function main() {
 Commands:
   init [--force]                    Create memory database
   extract [--dry-run] [--reprocess] Run extraction pipeline
+  embed [--stats] [--rebuild]       Manage vector embeddings
   stats                             Show database statistics
-  search <query>                    Search facts and topics (FTS)
+  search <query> [--json] [--fts-only] [--limit N]  Search knowledge
   who <keyword>                     Find members by expertise
-  roster [--output path]            Generate member roster as markdown
+  roster [--output path]            Generate member roster
 
 Options:
   --config <path>                   Path to clawmem.json config file
   --roster <path>                   Generate roster after extraction
   --no-enrich                       Skip URL metadata enrichment
+  --no-embed                        Skip auto-embedding after extraction
 
 Environment variables:
   CLAWMEM_DB_PATH                   Path to memory database
-  CLAWMEM_LLM_BASE_URL             LLM API base URL (OpenAI-compatible)
+  CLAWMEM_LLM_BASE_URL             LLM API base URL
   CLAWMEM_LLM_API_KEY              LLM API key
   CLAWMEM_LLM_MODEL                LLM model name
+  CLAWMEM_EMBEDDING_BASE_URL       Embedding API base URL
+  CLAWMEM_EMBEDDING_API_KEY        Embedding API key
+  CLAWMEM_EMBEDDING_MODEL          Embedding model name
 `);
   }
 }

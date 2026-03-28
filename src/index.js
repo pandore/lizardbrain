@@ -38,6 +38,8 @@ const sqliteAdapter = require('./adapters/sqlite');
 const jsonlAdapter = require('./adapters/jsonl');
 const urlEnricher = require('./enrichers/url');
 const { createDriver, dbExists, esc } = require('./driver');
+const search = require('./search');
+const embeddings = require('./embeddings');
 
 module.exports = {
   // Schema
@@ -62,6 +64,15 @@ module.exports = {
     whoKnows: store.whoKnows,
     getStats: store.getStats,
     generateRoster: store.generateRoster,
+  },
+
+  // Search (hybrid FTS5 + kNN + RRF)
+  search: search.search,
+
+  // Embeddings
+  embeddings: {
+    backfill: embeddings.backfill,
+    getStats: embeddings.getEmbeddingStats,
   },
 
   // Enrichers

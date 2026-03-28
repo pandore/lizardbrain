@@ -7,7 +7,7 @@ const store = require('./store');
 const urlEnricher = require('./enrichers/url');
 
 async function run(adapter, driver, config, options = {}) {
-  const { dryRun = false, reprocess = false, rosterPath = null, enrichUrls = true } = options;
+  const { dryRun = false, reprocess = false, rosterPath = null, enrichUrls = true, noEmbed = false } = options;
   const { batchSize = 40, minMessages = 5 } = config;
 
   const log = (msg) => console.log(msg);
@@ -57,7 +57,7 @@ async function run(adapter, driver, config, options = {}) {
   }
   log(`Processing ${batches.length} batch(es)...`);
 
-  let totalFacts = 0, totalTopics = 0, totalMembers = 0;
+  let totalFacts = 0, totalTopics = 0, totalMembers = 0, embedded = 0;
   let maxId = lastId;
 
   for (let i = 0; i < batches.length; i++) {
@@ -124,12 +124,28 @@ async function run(adapter, driver, config, options = {}) {
     log(`Roster: ${roster.count} members → ${rosterPath}`);
   }
 
+  // Auto-embed new records if configured
+  if (!dryRun && !noEmbed && config.embedding?.enabled && driver.capabilities.vectors && totalFacts + totalTopics + totalMembers > 0) {
+    try {
+      const embeddings = require('./embeddings');
+      log('\nAuto-embedding new records...');
+      const embedResult = await embeddings.backfill(driver, config.embedding);
+      if (embedResult.ok) {
+        embedded = embedResult.totalEmbedded;
+        log(`Embedded: ${embedded} new vectors`);
+      }
+    } catch (err) {
+      log(`Embedding failed (non-fatal): ${err.message}`);
+    }
+  }
+
   const summary = {
     ok: true,
     messages: messages.length,
     facts: totalFacts,
     topics: totalTopics,
     members: totalMembers,
+    embedded,
     maxId,
     dryRun,
   };
