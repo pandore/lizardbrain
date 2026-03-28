@@ -408,6 +408,48 @@ async function testEmbeddings() {
   assert(batches.flat().length === texts.length, 'All texts in batches');
 }
 
+function testRRFMerge() {
+  console.log('\n--- Test: RRF merge ---');
+  const { mergeRRF } = require('../src/search');
+
+  const ftsResults = [
+    { key: 'fact:1', data: { source: 'fact', id: 1, text: 'FTS hit 1' } },
+    { key: 'fact:2', data: { source: 'fact', id: 2, text: 'FTS hit 2' } },
+    { key: 'topic:1', data: { source: 'topic', id: 1, text: 'FTS topic' } },
+  ];
+  const vecResults = [
+    { key: 'fact:2', data: { source: 'fact', id: 2, text: 'Vec hit 2' } },
+    { key: 'fact:3', data: { source: 'fact', id: 3, text: 'Vec hit 3' } },
+    { key: 'topic:1', data: { source: 'topic', id: 1, text: 'Vec topic' } },
+  ];
+
+  const merged = mergeRRF([ftsResults, vecResults], 60);
+  assert(merged.length === 4, `RRF merged ${merged.length} items (expected 4)`);
+  const topKey = merged[0].key;
+  assert(topKey === 'fact:2' || topKey === 'topic:1', `Top result is overlap: ${topKey}`);
+  const keys = merged.map(m => m.key);
+  assert(keys.includes('fact:1'), 'FTS-only item present');
+  assert(keys.includes('fact:3'), 'Vec-only item present');
+  for (let i = 1; i < merged.length; i++) {
+    assert(merged[i].score <= merged[i - 1].score, `Score descending at ${i}`);
+  }
+}
+
+async function testFtsOnlySearch() {
+  console.log('\n--- Test: FTS-only search ---');
+  const { search } = require('../src/search');
+  const driver = createDriver(MEMORY_DB);
+
+  // Note: MEMORY_DB has data from testStore which runs before this
+  const result = await search(driver, 'RAG', { limit: 5, ftsOnly: true });
+  assert(result.mode === 'fts5', `Mode is fts5: ${result.mode}`);
+  assert(result.results.length > 0, `Got ${result.results.length} results`);
+  assert(result.results[0].source, 'Has source field');
+  assert(result.results[0].text, 'Has text field');
+  assert(typeof result.results[0].score === 'number', 'Has numeric score');
+  driver.close();
+}
+
 async function testUrlEnrichment() {
   console.log('\n--- Test: URL enrichment ---');
 
@@ -449,6 +491,8 @@ async function runAll() {
   testCliDriver();
   testBetterSqliteDriver();
   await testEmbeddings();
+  testRRFMerge();
+  await testFtsOnlySearch();
   await testUrlEnrichment();
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
