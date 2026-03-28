@@ -20,6 +20,14 @@ const DEFAULTS = {
     type: 'sqlite',
     // rest depends on adapter
   },
+  embedding: {
+    enabled: false,
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    dimensions: null,
+    batchTokenLimit: 8000,
+  },
 };
 
 function loadEnv(dir) {
@@ -72,6 +80,14 @@ function load(configPath) {
       promptTemplate: fileConfig.llm?.promptTemplate || DEFAULTS.llm.promptTemplate,
     },
     source: fileConfig.source || DEFAULTS.source,
+    embedding: {
+      enabled: fileConfig.embedding?.enabled || false,
+      baseUrl: fileConfig.embedding?.baseUrl || process.env.CLAWMEM_EMBEDDING_BASE_URL || DEFAULTS.embedding.baseUrl,
+      apiKey: fileConfig.embedding?.apiKey || process.env.CLAWMEM_EMBEDDING_API_KEY || DEFAULTS.embedding.apiKey,
+      model: fileConfig.embedding?.model || process.env.CLAWMEM_EMBEDDING_MODEL || DEFAULTS.embedding.model,
+      dimensions: fileConfig.embedding?.dimensions || DEFAULTS.embedding.dimensions,
+      batchTokenLimit: fileConfig.embedding?.batchTokenLimit || parseInt(process.env.CLAWMEM_EMBEDDING_BATCH_LIMIT) || DEFAULTS.embedding.batchTokenLimit,
+    },
   };
 
   return config;
