@@ -7,6 +7,12 @@
     "model": "gemini-3-flash-preview"
   },
 
+  "embedding": {
+    "enabled": true,
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "text-embedding-004"
+  },
+
   "source": {
     "type": "sqlite",
     "path": "~/.openclaw/lcm.db",

@@ -7,6 +7,13 @@
     "model": "qwen2.5:7b"
   },
 
+  "embedding": {
+    "enabled": true,
+    "baseUrl": "http://localhost:11434/v1",
+    "apiKey": "ollama",
+    "model": "nomic-embed-text"
+  },
+
   "source": {
     "type": "jsonl",
     "path": "./messages.jsonl",

@@ -6,6 +6,12 @@
     "model": "gemini-2.5-flash-lite"
   },
 
+  "embedding": {
+    "enabled": true,
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "text-embedding-004"
+  },
+
   "source": {
     "type": "sqlite",
     "path": "/path/to/chat.db",

@@ -8,6 +8,13 @@
     "model": "gpt-5-nano"
   },
 
+  "_comment_embedding": "Uncomment below to enable hybrid vector search",
+  "embedding": {
+    "enabled": false,
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "text-embedding-3-small"
+  },
+
   "source": {
     "type": "sqlite",
     "path": "./chat.db",

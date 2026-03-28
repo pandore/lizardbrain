@@ -1,0 +1,23 @@
+{
+  "memoryDbPath": "./clawmem.db",
+  "batchSize": 40,
+  "minMessages": 5,
+
+  "llm": {
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "model": "llama-3.3-70b-instruct"
+  },
+
+  "embedding": {
+    "enabled": true,
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "text-embedding-3-small"
+  },
+
+  "source": {
+    "type": "sqlite",
+    "path": "./chat.db",
+    "table": "messages",
+    "columns": { "id": "id", "content": "content", "sender": "sender", "timestamp": "timestamp" }
+  }
+}
