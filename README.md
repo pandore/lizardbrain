@@ -3,7 +3,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.5.0-orange.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.6.0-orange.svg)](package.json)
 
 Your group chat has years of knowledge buried in thousands of messages. Who knows what, what was decided, what tasks were assigned, what questions were answered -- it's all there, but impossible to find.
 
@@ -113,6 +113,61 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 **Links get context.** When someone shares a GitHub repo or web page, LizardBrain fetches metadata (stars, descriptions, titles) before sending to the LLM, so extracted facts are richer.
 
 **Built for agents.** Generate a compact member roster (~30 tokens per person) designed to fit in an agent's system prompt. At 100 members, that's ~3,000 tokens.
+
+---
+
+## v0.6 features
+
+<details>
+<summary>Security hardening</summary>
+
+- SQL escaping strips null bytes and properly handles single quotes via `esc()`
+- FTS5 queries are sanitized: operators (`*`, `NEAR`, `NOT`, `OR`, `AND`, `"`, `{`, `}`, `(`, `)`, `:`, `-`) are stripped before reaching MATCH clauses
+- CLI driver passes SQL via stdin (not shell arguments) to prevent shell metacharacter injection
+
+</details>
+
+<details>
+<summary>Extraction pipeline improvements</summary>
+
+- **LLM retry with backoff** -- transient errors (429, 5xx, network) automatically retry up to 3 times with exponential backoff + jitter
+- **`--limit N`** -- limit extraction to N batches for testing or cost control
+- **Enhanced `--dry-run`** -- now calls the LLM and shows what would be extracted, without writing to the database
+- **`reset-cursor` / `--from`** -- reprocess from a specific message ID
+- **Known-member injection** -- the 100 most recently active members are injected into the LLM prompt so it skips re-extracting unchanged members, saving tokens
+
+</details>
+
+<details>
+<summary>Multi-agent support</summary>
+
+Track which agent or pipeline produced each extraction via `source_agent`:
+
+```bash
+LIZARDBRAIN_SOURCE_AGENT=discord-bot node src/cli.js extract
+```
+
+All extracted entities (facts, decisions, tasks) are tagged with the source agent. Useful when multiple bots or pipelines write to the same database.
+
+</details>
+
+<details>
+<summary>Operational tooling</summary>
+
+- **`health [--json]`** -- check database, LLM connectivity, embedding endpoint, source adapter, disk usage
+- **`prune-embeddings`** -- clean up orphaned, stale, or model-specific embeddings from vector tables
+- **`reset-cursor [--to <id>]`** -- reset the extraction cursor to reprocess messages
+
+</details>
+
+<details>
+<summary>Performance</summary>
+
+- 9 database indexes on frequently queried columns (member lookups, context queries, FK joins, recency sorts)
+- Dedup queries merged from 2 reads to 1 read per entity (~50% fewer DB round-trips during extraction)
+- Known-members prompt capped at 100 most recent (configurable) to bound token usage
+
+</details>
 
 ---
 
@@ -406,13 +461,17 @@ driver.close();
 ## CLI reference
 
 ```
-lizardbrain init [--force] [--profile <name>]       Create memory database
-lizardbrain extract [--dry-run] [--reprocess]       Run extraction pipeline
-lizardbrain embed [--stats] [--rebuild]             Manage vector embeddings
-lizardbrain stats                                   Show database statistics
-lizardbrain search <query> [--json] [--fts-only]    Search knowledge
-lizardbrain who <keyword>                           Find members by expertise
-lizardbrain roster [--output path]                  Generate member roster
+lizardbrain init [--force] [--profile <name>]              Create memory database
+lizardbrain extract [--dry-run] [--reprocess]              Run extraction pipeline
+    [--limit N] [--from <id>]
+lizardbrain embed [--stats] [--rebuild]                    Manage vector embeddings
+lizardbrain stats                                          Show database statistics
+lizardbrain health [--json]                                Check system health
+lizardbrain search <query> [--json] [--fts-only] [--limit N]  Search knowledge
+lizardbrain who <keyword>                                  Find members by expertise
+lizardbrain roster [--output path]                         Generate member roster
+lizardbrain reset-cursor [--to <id>]                       Reset extraction cursor
+lizardbrain prune-embeddings [--orphaned] [--stale] [--model <name>]  Clean up embeddings
 ```
 
 | Flag | Description |
@@ -422,6 +481,8 @@ lizardbrain roster [--output path]                  Generate member roster
 | `--roster <path>` | Generate roster after extraction |
 | `--no-enrich` | Skip URL metadata enrichment |
 | `--no-embed` | Skip auto-embedding after extraction |
+| `--limit N` | Limit extraction to N batches |
+| `--from <id>` | Start extraction from a specific message ID |
 
 <details>
 <summary>Environment variables</summary>
