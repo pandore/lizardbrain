@@ -37,9 +37,10 @@ function create(config = {}) {
   function readStdin() {
     if (_buffer !== null) return _buffer;
     try {
-      _buffer = fs.readFileSync('/dev/stdin', 'utf-8');
-    } catch {
+      _buffer = fs.readFileSync(0, 'utf-8'); // fd 0 = stdin, cross-platform
+    } catch (err) {
       _buffer = '';
+      console.error(`[lizardbrain:stdin] Read error: ${err.message}`);
     }
     return _buffer;
   }

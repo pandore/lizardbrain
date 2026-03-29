@@ -1283,6 +1283,8 @@ function testAnthropicDetection() {
   assert(isAnthropic({ baseUrl: 'https://api.anthropic.com/v1' }), 'anthropic.com in URL detected');
   assert(!isAnthropic({ baseUrl: 'https://api.openai.com/v1' }), 'OpenAI URL not detected as Anthropic');
   assert(!isAnthropic({ provider: 'openai', baseUrl: 'https://api.openai.com/v1' }), 'Explicit provider=openai not Anthropic');
+  // Explicit openai override even on anthropic.com domain (reverse proxy scenario)
+  assert(!isAnthropic({ provider: 'openai', baseUrl: 'https://api.anthropic.com/v1' }), 'provider=openai overrides anthropic.com URL');
   assert(!isAnthropic({}), 'Empty config not Anthropic');
 }
 

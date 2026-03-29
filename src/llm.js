@@ -169,6 +169,8 @@ function formatMessages(messages) {
 
 /** Detect whether to use Anthropic Messages API. */
 function isAnthropic(config) {
+  // Explicit provider override takes priority
+  if (config.provider === 'openai') return false;
   if (config.provider === 'anthropic') return true;
   if (config.baseUrl?.includes('anthropic.com')) return true;
   return false;
@@ -223,10 +225,11 @@ function getUnclosedBrackets(text) {
 
 function buildRequest(prompt, config) {
   const { apiKey, baseUrl, model } = config;
+  const base = baseUrl.replace(/\/+$/, '');
 
   if (isAnthropic(config)) {
     return {
-      url: baseUrl.replace(/\/+$/, '') + '/v1/messages',
+      url: base.endsWith('/v1') ? base + '/messages' : base + '/v1/messages',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
@@ -255,7 +258,7 @@ function buildRequest(prompt, config) {
   };
 
   return {
-    url: baseUrl.replace(/\/+$/, '') + '/chat/completions',
+    url: base + '/chat/completions',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
@@ -266,7 +269,9 @@ function buildRequest(prompt, config) {
 
 function parseResponse(data, config) {
   if (isAnthropic(config)) {
-    return data.content?.[0]?.text || null;
+    // Find last text block — Anthropic may include thinking blocks before the actual text
+    const textBlock = data.content?.filter(b => b.type === 'text').pop();
+    return textBlock?.text || null;
   }
   return data.choices?.[0]?.message?.content || null;
 }

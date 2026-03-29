@@ -322,21 +322,24 @@ async function main() {
         try {
           const { isAnthropic } = require('./llm');
           const isAnth = isAnthropic(cfg.llm);
+          const base = cfg.llm.baseUrl.replace(/\/+$/, '');
           const url = isAnth
-            ? cfg.llm.baseUrl.replace(/\/+$/, '') + '/v1/messages'
-            : cfg.llm.baseUrl.replace(/\/+$/, '') + '/models';
+            ? (base.endsWith('/v1') ? base + '/messages' : base + '/v1/messages')
+            : base + '/models';
           const headers = isAnth
             ? { 'x-api-key': cfg.llm.apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
             : { 'Authorization': `Bearer ${cfg.llm.apiKey}` };
           const fetchOpts = { headers, signal: AbortSignal.timeout(5000) };
           if (isAnth) {
-            // Anthropic has no /models endpoint; send a minimal request to validate auth
+            // Validate auth without billing: send empty messages array → 400 = auth OK, 401 = bad key
             fetchOpts.method = 'POST';
-            fetchOpts.body = JSON.stringify({ model: cfg.llm.model || 'claude-sonnet-4-6', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] });
+            fetchOpts.body = JSON.stringify({ model: cfg.llm.model || 'claude-sonnet-4-6', max_tokens: 1, messages: [] });
           }
           const res = await fetch(url, fetchOpts);
-          health.llm = { reachable: res.ok, status: res.status, provider: isAnth ? 'anthropic' : 'openai-compatible' };
-          if (!res.ok) health.issues.push(`LLM endpoint returned ${res.status}`);
+          // For Anthropic: 400 (bad request) means auth passed — endpoint is reachable
+          const reachable = isAnth ? (res.status !== 401 && res.status !== 403) : res.ok;
+          health.llm = { reachable, status: res.status, provider: isAnth ? 'anthropic' : 'openai-compatible' };
+          if (!reachable) health.issues.push(`LLM endpoint returned ${res.status}`);
         } catch (err) {
           health.llm = { reachable: false, error: err.message };
           health.issues.push(`LLM unreachable: ${err.message}`);
