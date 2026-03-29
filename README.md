@@ -100,7 +100,7 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 
 ## Why LizardBrain?
 
-**Use any LLM.** OpenAI, Gemini, Groq, Ollama, Mistral -- anything with an OpenAI-compatible API. Cheap models work great for extraction; you don't need a frontier model to pull facts out of chat messages.
+**Use any LLM.** OpenAI, Anthropic, Gemini, Groq, Ollama, Mistral -- native Anthropic Messages API support plus any OpenAI-compatible endpoint. Cheap models work great for extraction; you don't need a frontier model to pull facts out of chat messages.
 
 **Zero dependencies to start.** The core tier uses Node.js and the `sqlite3` CLI that's already on your machine. No `npm install` needed.
 
@@ -124,12 +124,18 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 - SQL escaping strips null bytes and properly handles single quotes via `esc()`
 - FTS5 queries are sanitized: operators (`*`, `NEAR`, `NOT`, `OR`, `AND`, `"`, `{`, `}`, `(`, `)`, `:`, `-`) are stripped before reaching MATCH clauses
 - CLI driver passes SQL via stdin (not shell arguments) to prevent shell metacharacter injection
+- **Credential leakage protection** -- 12 regex patterns block API keys, tokens, passwords, JWTs, and connection strings from being stored as facts
+- **Generic member filter** -- rejects bot/placeholder names ("AI Agent", "Bot", "System", "Content Agent") via exact match and pattern matching
 
 </details>
 
 <details>
 <summary>Extraction pipeline improvements</summary>
 
+- **Native Anthropic API** -- auto-detects `anthropic.com` endpoints or use explicit `provider: 'anthropic'`. Also works via OpenRouter for Anthropic models.
+- **stdin adapter** -- `cat messages.jsonl | lizardbrain extract --source stdin` for piped input from any source
+- **JSON repair** -- truncated LLM output (trailing commas, unclosed brackets, code fences) is automatically repaired before parsing
+- **Per-batch cursor commits** -- cursor advances after each successful batch, so a crash mid-run doesn't lose all progress
 - **LLM retry with backoff** -- transient errors (429, 5xx, network) automatically retry up to 3 times with exponential backoff + jitter
 - **`--limit N`** -- limit extraction to N batches for testing or cost control
 - **Enhanced `--dry-run`** -- now calls the LLM and shows what would be extracted, without writing to the database
@@ -260,10 +266,11 @@ Default: disabled (identical to v0.4 behavior). Both features are fully backward
 
 ### LLM providers
 
-Any OpenAI-compatible chat completions API:
+OpenAI-compatible or native Anthropic Messages API:
 
 | Provider | `baseUrl` | Model | Cost (input/output per 1M) |
 |----------|-----------|-------|----------------------------|
+| Anthropic | `https://api.anthropic.com` | `claude-haiku-4-5` | $0.80 / $4.00 |
 | OpenAI | `https://api.openai.com/v1` | `gpt-5-nano` | $0.05 / $0.40 |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash-lite` | $0.10 / $0.40 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-instruct` | $0.10 / $0.32 |
@@ -355,6 +362,15 @@ Restrict extraction to group chats only -- prevents private messages from leakin
     "fields": { "id": "id", "content": "text", "sender": "from", "timestamp": "date" }
   }
 }
+```
+
+### stdin
+
+Pipe messages directly from any source:
+
+```bash
+cat messages.jsonl | node src/cli.js extract --source stdin
+curl https://api.example.com/messages | node src/cli.js extract --source stdin
 ```
 
 ### Custom adapter
