@@ -91,6 +91,10 @@ async function run(adapter, driver, config, options = {}) {
 
   log(`Processing ${batches.length} batch(es)...`);
 
+  // Query known members for prompt dedup hint
+  const knownMembers = store.getKnownMemberNames(driver);
+  if (knownMembers.length > 0) log(`Known members: ${knownMembers.length}`);
+
   // Query context from existing knowledge if enabled
   let contextSection = null;
   if (config.context?.enabled) {
@@ -136,6 +140,7 @@ async function run(adapter, driver, config, options = {}) {
         profileConfig,
         overlapMessages: overlapMsgs ? formatMessages(overlapMsgs) : null,
         contextSection,
+        knownMembers,
       };
       const extracted = await llm.extractWithRetry(primaryMsgs, llmConfig, llmConfig.maxRetries);
 

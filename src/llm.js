@@ -73,7 +73,7 @@ function buildUpdateSchema(entities) {
 
 function buildPrompt(formattedMessages, profileConfig, options = {}) {
   const { entities, factCategories, memberLabels } = profileConfig;
-  const { overlapMessages, contextSection } = options;
+  const { overlapMessages, contextSection, knownMembers } = options;
 
   // Build JSON schema with only enabled entities
   const schemaFragments = [];
@@ -109,6 +109,13 @@ function buildPrompt(formattedMessages, profileConfig, options = {}) {
     }
   }
 
+  // Add known-members dedup rule
+  if (knownMembers?.length > 0 && entities.includes('members')) {
+    rulesFragments.push(`Known member rules:
+- Members listed in KNOWN MEMBERS are already stored. Only include a known member in "members" if these messages reveal NEW expertise or projects not yet captured
+- For known members with no new info, omit them entirely from the output`);
+  }
+
   // Add update rules if context is present
   if (contextSection) {
     rulesFragments.push(`Update rules:
@@ -120,6 +127,9 @@ function buildPrompt(formattedMessages, profileConfig, options = {}) {
 
   // Build context blocks
   let contextBlock = '';
+  if (knownMembers?.length > 0) {
+    contextBlock += `\nKNOWN MEMBERS (already in database): ${knownMembers.join(', ')}\n`;
+  }
   if (overlapMessages) {
     contextBlock += `\nPREVIOUS MESSAGES (context only — do NOT extract from these, they were already processed):\n${overlapMessages}\n`;
   }
@@ -164,6 +174,7 @@ async function extract(messages, config) {
     profileConfig,
     overlapMessages,
     contextSection,
+    knownMembers,
   } = config;
 
   if (!apiKey) throw new Error('LLM API key not configured');
@@ -178,6 +189,7 @@ async function extract(messages, config) {
     prompt = buildPrompt(formatted, profileConfig, {
       overlapMessages: overlapMessages || null,
       contextSection: contextSection || null,
+      knownMembers: knownMembers || null,
     });
   } else {
     prompt = EXTRACTION_PROMPT.replace('{messages}', formatted);

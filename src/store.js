@@ -523,6 +523,11 @@ function setCursor(driver, id) {
   driver.write(`UPDATE extraction_state SET last_processed_id = '${esc(String(id))}' WHERE id = 1;`);
 }
 
+function getKnownMemberNames(driver) {
+  const rows = driver.read('SELECT display_name FROM members ORDER BY last_seen DESC');
+  return rows.map(r => r.display_name).filter(Boolean);
+}
+
 function getStats(driver) {
   const members = driver.read('SELECT COUNT(*) as c FROM members');
   const facts = driver.read('SELECT COUNT(*) as c FROM facts');
@@ -648,6 +653,7 @@ module.exports = {
   updateDecisionStatus,
   updateTaskStatus,
   updateQuestionAnswer,
+  getKnownMemberNames,
   getActiveContext,
   formatContext,
 };

@@ -76,6 +76,7 @@ module.exports = {
     updateDecisionStatus: store.updateDecisionStatus,
     updateTaskStatus: store.updateTaskStatus,
     updateQuestionAnswer: store.updateQuestionAnswer,
+    getKnownMemberNames: store.getKnownMemberNames,
     getActiveContext: store.getActiveContext,
     formatContext: store.formatContext,
     setCursor: store.setCursor,
