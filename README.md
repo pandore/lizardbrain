@@ -232,7 +232,7 @@ Without context, each extraction run is stateless — the LLM doesn't know about
 {
   "context": {
     "enabled": true,
-    "tokenBudget": 500,
+    "tokenBudget": 1000,
     "recencyDays": 30,
     "maxItems": {
       "decisions": 5,
@@ -250,7 +250,7 @@ Before the extraction loop, LizardBrain queries the DB for recent and active ent
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `false` | Enable context injection |
-| `tokenBudget` | `500` | Max tokens (~2000 chars) for context section |
+| `tokenBudget` | `1000` | Max tokens (~4000 chars) for context section |
 | `recencyDays` | `30` | How far back to look for recent entities |
 | `maxItems` | see above | Max items per entity type in context |
 
@@ -536,6 +536,143 @@ LizardBrain uses `console.log` and does not manage log files directly. When runn
   notifempty
 }
 ```
+
+---
+
+## Tuning Guide
+
+LizardBrain ships with defaults tuned for small groups (<50 active members, <5K messages). Below are all parameters you should review when setting up for your specific use case. **Ask these questions before configuring:**
+
+1. **How many active members?** Affects `knownMembersLimit` and roster token budget.
+2. **How many messages per day?** Affects `batchSize`, `minMessages`, and cron frequency.
+3. **What kind of group?** Determines the `profile` — community vs. team vs. project.
+4. **Do decisions/tasks need tracking?** Determines whether to enable `context` injection.
+5. **Is cost a concern?** Affects LLM model choice, `batchSize`, and embedding config.
+
+### Extraction pipeline
+
+These control how messages are batched and sent to the LLM.
+
+| Parameter | Default | Config key | What to change |
+|-----------|---------|------------|----------------|
+| Batch size | `40` | `batchSize` | **Increase to 60-80** for groups with long threaded discussions. **Decrease to 20-30** for noisy groups where conversations are short. Larger batches give the LLM more context but cost more per call. |
+| Min messages | `5` | `minMessages` | **Increase to 10-20** for high-volume groups to avoid processing tiny increments. **Set to 1** if running manually and you want every message processed. |
+| Batch overlap | `0` | `batchOverlap` | **Set to 5-10** if conversations frequently span batch boundaries (people continue the same topic across 40+ messages). Costs extra tokens but prevents split-context extraction. |
+| Max retries | `3` | `llm.maxRetries` | **Increase to 5** if using rate-limited free tiers. **Set to 1** for fast failure during development. |
+
+### Context injection
+
+Controls what existing knowledge the LLM sees when extracting new batches. **Without context, decisions/tasks can never be updated — only created.**
+
+| Parameter | Default | Config key | What to change |
+|-----------|---------|------------|----------------|
+| Enabled | `false` | `context.enabled` | **Set to `true`** for any profile that has decisions, tasks, or questions (team, project, full). Not needed for knowledge-only profiles. |
+| Token budget | `1000` | `context.tokenBudget` | **Increase to 1500-2000** for teams with many open tasks/decisions (50+). Each entity takes ~30-50 tokens. At 1000, you get ~25-30 entities in context. |
+| Recency days | `30` | `context.recencyDays` | **Increase to 90-180** for slow-moving groups where decisions take months. **Decrease to 7-14** for fast-paced daily standup groups. |
+| Max decisions | `5` | `context.maxItems.decisions` | **Increase to 15-20** for teams with many concurrent decisions. |
+| Max tasks | `10` | `context.maxItems.tasks` | **Increase to 25-50** for project-heavy teams. This is often the most important number to raise. |
+| Max questions | `5` | `context.maxItems.questions` | **Increase to 10-15** for Q&A-heavy communities. |
+| Max facts | `5` | `context.maxItems.facts` | Usually fine at 5. Only recent high-confidence facts are injected. |
+| Max topics | `3` | `context.maxItems.topics` | Usually fine at 3. Topics are mainly for dedup, not updates. |
+
+### Known members prompt
+
+Controls how many existing members are shown to the LLM to prevent redundant re-extraction.
+
+| Parameter | Default | Where | What to change |
+|-----------|---------|-------|----------------|
+| Known members limit | `100` | `getKnownMemberNames(driver, limit)` | **Increase to 200-500** for large communities (500+ members). Each name costs ~15 tokens. At 500 members that's ~7500 prompt tokens — weigh against extraction cost. Callers override this via the `limit` parameter. |
+
+### LLM settings
+
+These are hardcoded in `src/llm.js` but may need adjustment for specific models.
+
+| Parameter | Default | What to change |
+|-----------|---------|----------------|
+| Temperature | `0.1` | **Leave low** for extraction (you want deterministic structured output). Only increase if using a model that produces repetitive output at low temperature. |
+| Max output tokens | `4096` | **Increase to 8192** if using large batch sizes (80+) and the LLM truncates its response. Most extraction responses are 1-2K tokens. |
+| Response format | `json_object` | Some providers don't support this. The code still works — it just means occasional non-JSON responses that fail to parse. The code fence stripping helps with models that wrap JSON in markdown. |
+
+### Embedding & search
+
+| Parameter | Default | Config key | What to change |
+|-----------|---------|------------|----------------|
+| Enabled | `false` | `embedding.enabled` | **Set to `true`** for semantic search (finds "container orchestration" when searching "Kubernetes"). Requires `better-sqlite3` + `sqlite-vec`. |
+| Dimensions | auto-detect | `embedding.dimensions` | **Set explicitly** if your model doesn't return dimensions in the API response. Common: 1536 (OpenAI), 768 (Gemini/Nomic). |
+| Batch token limit | `8000` | `embedding.batchTokenLimit` | **Increase to 16000** for embedding APIs with higher limits. This is characters, not tokens (~4 chars per token). |
+| RRF K constant | `60` | hardcoded in `search.js` | Controls hybrid search ranking. Higher K = more equal weighting between FTS and vector results. Default of 60 is standard in IR literature. Rarely needs changing. |
+
+### URL enrichment
+
+| Parameter | Default | Config key | What to change |
+|-----------|---------|------------|----------------|
+| Max URLs per batch | `10` | `urlEnrichment.maxUrls` | **Increase to 20** for link-heavy groups (dev communities sharing repos). **Set to 0 or use `--no-enrich`** to disable entirely if URLs are rare or you want faster extraction. |
+| Timeout per URL | `5000` ms | `urlEnrichment.timeoutMs` | **Decrease to 2000** if enrichment is slowing extraction. **Increase to 10000** if fetching from slow sites. |
+
+### Recommended configurations
+
+<details>
+<summary>Small team (5-15 people, Slack/Discord)</summary>
+
+```json
+{
+  "profile": "team",
+  "batchSize": 40,
+  "batchOverlap": 5,
+  "context": {
+    "enabled": true,
+    "tokenBudget": 1000,
+    "recencyDays": 60
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Large community (100-500 people, Discord/Telegram)</summary>
+
+```json
+{
+  "profile": "knowledge",
+  "batchSize": 60,
+  "minMessages": 10,
+  "batchOverlap": 0,
+  "context": {
+    "enabled": false
+  }
+}
+```
+
+Context injection is less important for knowledge profiles (no tasks/decisions to update). The dedup layer handles fact overlap. Consider enabling embeddings for semantic search across the larger fact base.
+
+</details>
+
+<details>
+<summary>Project group (15-50 people, heavy task tracking)</summary>
+
+```json
+{
+  "profile": "project",
+  "batchSize": 40,
+  "batchOverlap": 5,
+  "context": {
+    "enabled": true,
+    "tokenBudget": 1500,
+    "recencyDays": 90,
+    "maxItems": {
+      "decisions": 15,
+      "tasks": 25,
+      "questions": 10,
+      "facts": 5
+    }
+  }
+}
+```
+
+Higher token budget and item limits because projects tend to have many concurrent tasks and decisions that evolve over weeks/months.
+
+</details>
 
 ---
 

@@ -358,7 +358,7 @@ function getActiveContext(driver, profileConfig, options = {}) {
   return context;
 }
 
-function formatContext(context, tokenBudget = 500) {
+function formatContext(context, tokenBudget = 1000) {
   const lines = [];
 
   if (context.topics?.length) {

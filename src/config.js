@@ -13,7 +13,7 @@ const DEFAULTS = {
   rosterPath: null,
   context: {
     enabled: false,
-    tokenBudget: 500,
+    tokenBudget: 1000,
     recencyDays: 30,
     maxItems: { decisions: 5, tasks: 10, questions: 5, facts: 5, topics: 3 },
   },
