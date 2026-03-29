@@ -4,6 +4,38 @@
 
 const { esc, sanitizeFtsQuery } = require('./driver');
 
+// Reject facts that contain credentials, API keys, tokens, or secrets.
+// These can leak into agent prompts via context injection or search results.
+const CREDENTIAL_PATTERNS = [
+  /\b(sk-[a-zA-Z0-9]{20,})\b/,                     // OpenAI keys
+  /\b(AIza[a-zA-Z0-9_-]{30,})\b/,                   // Google API keys
+  /\b(ghp_[a-zA-Z0-9]{36,})\b/,                     // GitHub PATs
+  /\b(ghs_[a-zA-Z0-9]{36,})\b/,                     // GitHub app tokens
+  /\b(glpat-[a-zA-Z0-9_-]{20,})\b/,                 // GitLab PATs
+  /\b(xox[bpras]-[a-zA-Z0-9-]{10,})\b/,             // Slack tokens
+  /\b(AKIA[A-Z0-9]{16})\b/,                         // AWS access keys
+  /\b(eyJ[a-zA-Z0-9_-]{20,}\.eyJ[a-zA-Z0-9_-]+)\b/, // JWTs
+  /\b[a-f0-9]{40}\b/,                                // 40-char hex (SHA1 tokens/secrets)
+  /\bapi[_-]?key\s*[:=]\s*\S{10,}/i,                // Generic "api_key = ..."
+  /\bsecret[_-]?key\s*[:=]\s*\S{10,}/i,             // Generic "secret_key = ..."
+  /\bpassword\s*[:=]\s*\S{6,}/i,                     // Inline passwords
+  /\btoken\s*[:=]\s*\S{10,}/i,                       // Generic "token = ..."
+];
+
+function containsCredential(text) {
+  return CREDENTIAL_PATTERNS.some(p => p.test(text));
+}
+
+// Filter out generic/bot member names that don't represent real people
+const GENERIC_MEMBER_NAMES = new Set([
+  'ai agent', 'ai assistant', 'assistant', 'bot', 'chatbot', 'system',
+  'admin', 'moderator', 'unknown', 'anonymous', 'user', 'guest',
+]);
+
+function isGenericMember(name) {
+  return GENERIC_MEMBER_NAMES.has(name.toLowerCase().trim());
+}
+
 function mergeCSV(existing, incoming) {
   const existingSet = new Set(
     (existing || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
@@ -63,6 +95,9 @@ function insertFact(driver, fact, memberId, messageDate, sourceAgent) {
   // Dedup strategy: extract key terms from content and check FTS for similar existing facts.
   // This catches semantically similar facts even when LLM rephrases them.
   const content = fact.content || '';
+
+  // Reject facts containing credentials/secrets — these leak into agent prompts
+  if (containsCredential(content)) return false;
 
   // Dedup: combined exact-prefix + FTS keyword check in single query
   const prefix = esc(content.substring(0, 80).toLowerCase());
@@ -374,6 +409,7 @@ function processExtraction(driver, extracted, messageDate, { sourceAgent = null 
   if (extracted.members && Array.isArray(extracted.members)) {
     for (const member of extracted.members) {
       if (!member.display_name) continue;
+      if (isGenericMember(member.display_name)) continue;
       const id = upsertMember(driver, member, messageDate);
       memberIdMap[member.display_name.toLowerCase()] = id;
       totalMembers++;

@@ -1055,6 +1055,80 @@ function testMigrationV05() {
   driver.close();
 }
 
+function testCredentialFiltering() {
+  console.log('\n--- Test: credential filtering ---');
+
+  const memDriver = createDriver(MEMORY_DB);
+  const before = store.getStats(memDriver);
+
+  store.processExtraction(memDriver, {
+    members: [],
+    facts: [
+      { category: 'resource', content: 'Use sk-abc123def456ghi789jkl012mno345pqr678stu to access the API', source_member: 'alice', tags: 'api', confidence: 0.9 },
+      { category: 'resource', content: 'The GitHub token ghp_abcdefghijklmnopqrstuvwxyz0123456789 gives repo access', source_member: 'bob', tags: 'github', confidence: 0.9 },
+      { category: 'tool', content: 'Set api_key = sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxx in your .env file', source_member: 'alice', tags: 'config', confidence: 0.85 },
+      { category: 'tool', content: 'LangChain supports multiple embedding providers', source_member: 'alice', tags: 'langchain', confidence: 0.9 },
+      { category: 'resource', content: 'AWS access key AKIAIOSFODNN7EXAMPLE was shared in channel', source_member: 'bob', tags: 'aws', confidence: 0.8 },
+      { category: 'tool', content: 'password = hunter2suchsecret is the database password', source_member: 'alice', tags: 'db', confidence: 0.7 },
+    ],
+    topics: [],
+  }, '2026-03-20');
+
+  const after = store.getStats(memDriver);
+  const newFacts = after.facts - before.facts;
+  assert(newFacts === 1, `Only 1 safe fact stored out of 6 (got ${newFacts}) — credentials blocked`);
+
+  memDriver.close();
+}
+
+function testGenericMemberFiltering() {
+  console.log('\n--- Test: generic member filtering ---');
+
+  const memDriver = createDriver(MEMORY_DB);
+  const before = store.getStats(memDriver);
+
+  store.processExtraction(memDriver, {
+    members: [
+      { display_name: 'AI Agent', username: null, expertise: 'everything', projects: '' },
+      { display_name: 'Bot', username: 'bot', expertise: '', projects: '' },
+      { display_name: 'System', username: 'system', expertise: '', projects: '' },
+      { display_name: 'Charlie', username: 'charlie', expertise: 'Python, FastAPI', projects: 'web-app' },
+      { display_name: 'Unknown', username: null, expertise: '', projects: '' },
+    ],
+    facts: [],
+    topics: [],
+  }, '2026-03-20');
+
+  const after = store.getStats(memDriver);
+  const newMembers = after.members - before.members;
+  assert(newMembers === 1, `Only 1 real member stored out of 5 (got ${newMembers}) — generics filtered`);
+
+  memDriver.close();
+}
+
+function testCodeFenceStripping() {
+  console.log('\n--- Test: JSON code fence stripping ---');
+
+  // Simulate what the LLM returns wrapped in code fences
+  const fenced = '```json\n{"members": [], "facts": [], "topics": []}\n```';
+  const cleaned = fenced.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const parsed = JSON.parse(cleaned);
+  assert(Array.isArray(parsed.members), 'Parsed members from fenced JSON');
+  assert(Array.isArray(parsed.facts), 'Parsed facts from fenced JSON');
+
+  // Without fences should also work
+  const plain = '{"members": [], "facts": []}';
+  const cleanedPlain = plain.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const parsedPlain = JSON.parse(cleanedPlain);
+  assert(Array.isArray(parsedPlain.members), 'Plain JSON still parses correctly');
+
+  // Just ``` without json label
+  const fencedNoLabel = '```\n{"members": []}\n```';
+  const cleanedNoLabel = fencedNoLabel.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const parsedNoLabel = JSON.parse(cleanedNoLabel);
+  assert(Array.isArray(parsedNoLabel.members), 'Fenced JSON without label also parses');
+}
+
 // --- Run ---
 
 async function runAll() {
@@ -1083,6 +1157,9 @@ async function runAll() {
   testContextQuery();
   testBuildPromptWithContext();
   testMigrationV05();
+  testCredentialFiltering();
+  testGenericMemberFiltering();
+  testCodeFenceStripping();
   await testUrlEnrichment();
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

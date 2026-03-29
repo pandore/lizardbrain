@@ -43,6 +43,7 @@ Rules:
 - Only extract information explicitly stated in messages, don't infer
 - Skip greetings, small talk, and messages with no informational content
 - Extract durable knowledge useful months later, not ephemeral news
+- NEVER extract API keys, tokens, passwords, secrets, or credentials — these are security-sensitive and must not be stored
 
 Member rules:
 - "expertise": only list skills where the person shows SUBSTANTIVE knowledge, not casual mentions
@@ -151,6 +152,7 @@ Rules:
 - Only extract information explicitly stated in messages, don't infer
 - Skip greetings, small talk, and messages with no informational content
 - Extract durable knowledge useful months later, not ephemeral news
+- NEVER extract API keys, tokens, passwords, secrets, or credentials — these are security-sensitive and must not be stored
 
 ${rulesFragments.join('\n\n')}
 
@@ -240,7 +242,10 @@ async function extract(messages, config) {
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error('Empty response from LLM');
 
-  return JSON.parse(content);
+  // Strip markdown code fences that some models wrap around JSON
+  const cleaned = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+  return JSON.parse(cleaned);
 }
 
 /**
