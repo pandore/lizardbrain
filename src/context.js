@@ -36,6 +36,7 @@ function assembleContext(driver, options = {}) {
       const recentFacts = driver.read(
         `SELECT id, content, category, confidence, created_at FROM facts
          WHERE source_member_id = ${parseInt(member.id)}
+         AND created_at >= datetime('now', '-${recencyDays} days')
          ORDER BY created_at DESC LIMIT 5`
       );
 

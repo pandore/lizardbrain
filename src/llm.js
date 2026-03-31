@@ -368,7 +368,16 @@ async function extractFromText(text, config, profileConfig) {
     throw new Error('LLM not configured. Set llm config in lizardbrain.json.');
   }
 
-  const result = await extractWithRetry(text, config);
+  // Build the formatted messages string that extractWithRetry expects
+  const formatted = `[unknown] user: ${text}`;
+
+  // extractWithRetry expects the LLM config directly (not nested under .llm)
+  const llmConfig = { ...config.llm };
+  if (profileConfig) {
+    llmConfig.profileConfig = profileConfig;
+  }
+
+  const result = await extractWithRetry(formatted, llmConfig);
   return result;
 }
 

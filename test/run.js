@@ -1520,6 +1520,9 @@ async function testMcpToolHandlers() {
   const u4 = await handlers.update_entity({ type: 'question', id: 1 });
   assert(u4.isError === true, 'update_entity: missing answer is error');
 
+  const u4b = await handlers.update_entity({ type: 'question', id: 1, answer: 'test' });
+  assert(u4b.isError === true, 'update_entity: missing answeredBy is error');
+
   const u5 = await handlers.update_entity({ type: 'invalid', id: 1 });
   assert(u5.isError === true, 'update_entity: invalid type is error');
 

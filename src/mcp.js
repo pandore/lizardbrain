@@ -184,6 +184,9 @@ function createHandlers(driver, config) {
           if (!args.answer) {
             return { isError: true, error: 'question requires answer field' };
           }
+          if (!args.answeredBy) {
+            return { isError: true, error: 'question requires answeredBy field' };
+          }
           const ok = store.updateQuestionAnswer(driver, id, args.answer, args.answeredBy || '');
           if (!ok) return { isError: true, error: `Failed to update question ${id}. Check id exists.` };
           return { isError: false, data: { updated: true } };

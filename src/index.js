@@ -99,7 +99,8 @@ module.exports = {
 
   // MCP
   createServer: (() => {
-    try { return require('./mcp').createServer; } catch (e) { return null; }
+    try { return require('./mcp').createServer; }
+    catch (e) { if (e.code === 'MODULE_NOT_FOUND') return null; throw e; }
   })(),
   context: {
     assembleContext: require('./context').assembleContext,
