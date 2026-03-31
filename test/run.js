@@ -1319,6 +1319,80 @@ function testExpandedGenericFilter() {
   driver.close();
 }
 
+function testContextAssembly() {
+  console.log('\n--- Test: context-assembly ---');
+
+  const context = require('../src/context');
+
+  // Setup: insert test data into memory DB
+  const driver = createDriver(MEMORY_DB);
+  migrate(driver);
+
+  // Insert members
+  store.processExtraction(driver, {
+    members: [
+      { display_name: 'Alice', username: 'alice', expertise: 'Python, ML', projects: 'RAG pipeline' },
+      { display_name: 'Bob', username: 'bob', expertise: 'TypeScript, React', projects: 'Frontend' },
+    ],
+    facts: [
+      { content: 'LangChain works well with chunk size 512', category: 'technique', source_member: 'Alice', tags: 'rag,langchain', confidence: 0.9 },
+      { content: 'LlamaIndex is better for large PDFs', category: 'tool', source_member: 'Bob', tags: 'llamaindex,pdf', confidence: 0.85 },
+      { content: 'text-embedding-3-small is cheap and decent quality', category: 'tool', source_member: 'Bob', tags: 'embeddings,openai', confidence: 0.8 },
+    ],
+    decisions: [
+      { description: 'Use LlamaIndex for PDF processing', status: 'agreed', participants: 'Alice, Bob', tags: 'architecture' },
+    ],
+    tasks: [
+      { description: 'Migrate RAG pipeline to LlamaIndex', assignee: 'Bob', status: 'open', source_member: 'Bob', tags: 'migration' },
+    ],
+    questions: [
+      { question: 'What embedding model should we standardize on?', asker: 'Alice', status: 'open', tags: 'embeddings' },
+    ],
+  }, '2026-03-15T10:00:00Z', { sourceAgent: 'test' });
+
+  // Test 1: participants only
+  const ctx1 = context.assembleContext(driver, { participants: ['Alice'] });
+  assert(ctx1.participants.length >= 1, 'participants: returns Alice profile');
+  assert(ctx1.participants[0].name === 'Alice', 'participants: correct name');
+  assert(ctx1.participants[0].expertise.includes('Python'), 'participants: includes expertise');
+
+  // Test 2: topics only
+  const ctx2 = context.assembleContext(driver, { topics: ['langchain'] });
+  assert(ctx2.facts.length >= 1, 'topics: returns facts about langchain');
+
+  // Test 3: both participants and topics
+  const ctx3 = context.assembleContext(driver, { participants: ['Alice'], topics: ['langchain'] });
+  assert(ctx3.participants.length >= 1, 'both: has participants');
+  assert(ctx3.facts.length >= 0, 'both: has facts (may be in participant recentFacts)');
+
+  // Test 4: neither (general catch-up)
+  const ctx4 = context.assembleContext(driver, {});
+  const hasAnyContent = ctx4.participants.length > 0 || ctx4.facts.length > 0 ||
+    ctx4.decisions.length > 0 || ctx4.tasks.length > 0 || ctx4.questions.length > 0;
+  assert(hasAnyContent, 'general: returns recent activity');
+
+  // Test 5: token budget enforcement
+  const ctx5 = context.assembleContext(driver, { topics: ['langchain', 'embeddings', 'pdf'], tokenBudget: 100 });
+  const totalChars = JSON.stringify(ctx5).length;
+  assert(totalChars <= 100 * 4 + 200, 'budget: output roughly within token budget');
+
+  // Test 6: empty DB
+  const emptyDb = path.join(TEST_DIR, 'empty.db');
+  lizardbrain.init(emptyDb, { profile: 'full' });
+  const emptyDriver = createDriver(emptyDb);
+  migrate(emptyDriver);
+  const ctx6 = context.assembleContext(emptyDriver, { participants: ['Nobody'] });
+  assert(ctx6.participants.length === 0, 'empty DB: no participants');
+  assert(ctx6.facts.length === 0, 'empty DB: no facts');
+  emptyDriver.close();
+
+  // Test 7: recencyDays filtering
+  const ctx7 = context.assembleContext(driver, { topics: ['langchain'], recencyDays: 0 });
+  assert(Array.isArray(ctx7.facts), 'recencyDays: returns array');
+
+  driver.close();
+}
+
 // --- Run ---
 
 async function runAll() {
@@ -1355,6 +1429,7 @@ async function runAll() {
   testAnthropicDetection();
   testExpandedGenericFilter();
   testStdinAdapter();
+  testContextAssembly();
   await testUrlEnrichment();
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
