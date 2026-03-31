@@ -432,6 +432,50 @@ async function main() {
       break;
     }
 
+    case 'serve': {
+      // Require better-sqlite3 for MCP mode
+      try {
+        require('better-sqlite3');
+      } catch (e) {
+        console.error('MCP server requires better-sqlite3. Install it with: npm install better-sqlite3');
+        process.exit(1);
+      }
+      try {
+        require('@modelcontextprotocol/sdk/server/mcp.js');
+      } catch (e) {
+        console.error('MCP server requires @modelcontextprotocol/sdk. Install it with: npm install @modelcontextprotocol/sdk zod');
+        process.exit(1);
+      }
+
+      if (!dbExists(cfg.memoryDbPath)) {
+        console.error('Memory database not found. Run `lizardbrain init` first.');
+        process.exit(1);
+      }
+
+      const driver = createDriver(cfg.memoryDbPath);
+      migrate(driver);
+
+      if (driver.backend !== 'better-sqlite3') {
+        console.error('MCP server requires better-sqlite3 driver.');
+        driver.close();
+        process.exit(1);
+      }
+
+      const { createServer } = require('./mcp');
+      const mcp = createServer({ driver, config: cfg });
+
+      process.on('SIGINT', () => { mcp.close(); process.exit(0); });
+      process.on('SIGTERM', () => { mcp.close(); process.exit(0); });
+
+      // All logging must go to stderr in stdio mode
+      console.error(`lizardbrain MCP server v${require('../package.json').version}`);
+      console.error(`Database: ${cfg.memoryDbPath}`);
+      console.error(`Driver: ${driver.backend}, vectors: ${driver.capabilities.vectors}`);
+
+      await mcp.connect();
+      break;
+    }
+
     default:
       console.log(`lizardbrain — Persistent memory for group chats
 
@@ -447,6 +491,7 @@ Commands:
   roster [--output path]              Generate member roster
   reset-cursor [--to <id>]            Reset extraction cursor
   prune-embeddings [--orphaned] [--stale] [--model <name>]  Clean up embeddings
+  serve                               Start MCP server (stdio transport)
 
 Profiles:
   knowledge  Community, interest group (members, facts, topics)
