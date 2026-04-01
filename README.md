@@ -100,7 +100,7 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 
 ## Why LizardBrain?
 
-**Use any LLM.** OpenAI, Anthropic, Gemini, Groq, Ollama, Mistral -- native Anthropic Messages API support plus any OpenAI-compatible endpoint. Cheap models work great for extraction; you don't need a frontier model to pull facts out of chat messages.
+**Use any LLM.** OpenAI, Anthropic, Gemini, Groq, Ollama, Mistral -- uses the [Vercel AI SDK](https://sdk.vercel.ai/) with Zod-validated structured output, so you get typed extraction results or a clear error, never silently broken JSON. Any OpenAI-compatible endpoint works, plus native Anthropic support.
 
 **Zero dependencies to start.** The core tier uses Node.js and the `sqlite3` CLI that's already on your machine. No `npm install` needed.
 
@@ -117,6 +117,28 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 **MCP server built in.** Run `lizardbrain serve` and any MCP-compatible client (Claude Desktop, Cursor, custom agents) can read, search, and write knowledge directly. No shell-outs, no parsing CLI output — agents talk to LizardBrain over the Model Context Protocol.
 
 ---
+
+## v0.7 features
+
+<details>
+<summary>Vercel AI SDK for structured output</summary>
+
+Replaced raw `fetch()` calls with the [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` v6). LLM responses are now validated against dynamic Zod schemas built from your profile's entity types — you get a typed object or a clear error, never silently broken JSON.
+
+- **Structured output** -- `generateText` + `Output.object({ schema })` with per-profile Zod schemas
+- **Built-in retries** -- SDK handles rate limits (429) and transient errors with exponential backoff
+- **Graceful fallback** -- if structured output fails, falls back to JSON repair for resilience
+- **Provider selection** -- `@ai-sdk/openai-compatible` for any endpoint, `@ai-sdk/anthropic` (optional) for native Anthropic support with custom base URLs
+- **`promptTemplate` deprecated** -- still works (plain text mode + JSON repair) but profiles with Zod schemas are recommended
+
+</details>
+
+<details>
+<summary>MCP server</summary>
+
+Run `lizardbrain serve` and any MCP-compatible client (Claude Desktop, Cursor, custom agents) can read, search, and write knowledge directly. 7 tools: `get_context`, `search`, `who_knows`, `get_stats`, `add_knowledge`, `ingest`, `update_entity`.
+
+</details>
 
 ## v0.6 features (included in v0.7)
 
@@ -136,9 +158,9 @@ No manual intervention needed. The LLM references entity IDs from context and ou
 
 - **Native Anthropic API** -- auto-detects `anthropic.com` endpoints or use explicit `provider: 'anthropic'`. Also works via OpenRouter for Anthropic models.
 - **stdin adapter** -- `cat messages.jsonl | lizardbrain extract --source stdin` for piped input from any source
-- **JSON repair** -- truncated LLM output (trailing commas, unclosed brackets, code fences) is automatically repaired before parsing
+- **JSON repair** -- truncated LLM output (trailing commas, unclosed brackets, code fences) is automatically repaired as a fallback when structured output fails
 - **Per-batch cursor commits** -- cursor advances after each successful batch, so a crash mid-run doesn't lose all progress
-- **LLM retry with backoff** -- transient errors (429, 5xx, network) automatically retry up to 3 times with exponential backoff + jitter
+- **LLM retry with backoff** -- transient errors (429, 5xx, network) automatically retry up to 3 times via AI SDK's built-in retry
 - **`--limit N`** -- limit extraction to N batches for testing or cost control
 - **Enhanced `--dry-run`** -- now calls the LLM and shows what would be extracted, without writing to the database
 - **`reset-cursor` / `--from`** -- reprocess from a specific message ID
@@ -741,7 +763,7 @@ These are hardcoded in `src/llm.js` but may need adjustment for specific models.
 |-----------|---------|----------------|
 | Temperature | `0.1` | **Leave low** for extraction (you want deterministic structured output). Only increase if using a model that produces repetitive output at low temperature. |
 | Max output tokens | `4096` | **Increase to 8192** if using large batch sizes (80+) and the LLM truncates its response. Most extraction responses are 1-2K tokens. |
-| Response format | `json_object` | Some providers don't support this. The code still works — it just means occasional non-JSON responses that fail to parse. The code fence stripping helps with models that wrap JSON in markdown. |
+| Structured output | Zod schema | Uses Vercel AI SDK's `Output.object({ schema })` with dynamic Zod schemas built from your profile. If the model returns invalid output, falls back to JSON repair. No configuration needed. |
 
 ### Embedding & search
 
@@ -830,8 +852,9 @@ Higher token budget and item limits because projects tend to have many concurren
 
 | Tier | What you need |
 |------|--------------|
-| **Core** (zero deps) | Node.js >= 18 and `sqlite3` CLI (already on macOS/Linux) |
-| **MCP** (agent access) | + `npm install better-sqlite3 @modelcontextprotocol/sdk zod` |
+| **Core** | Node.js >= 18, `sqlite3` CLI (already on macOS/Linux), `npm install` (installs `ai`, `@ai-sdk/openai-compatible`, `zod`) |
+| **Anthropic** (native API) | + `npm install @ai-sdk/anthropic` (optional — included in optionalDependencies) |
+| **MCP** (agent access) | + `npm install better-sqlite3 @modelcontextprotocol/sdk` |
 | **Vector** (semantic search) | + `npm install sqlite-vec` + any embedding API |
 
 ---

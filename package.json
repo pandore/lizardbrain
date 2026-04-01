@@ -45,11 +45,14 @@
     "node": ">=18.0.0"
   },
   "optionalDependencies": {
+    "@ai-sdk/anthropic": "^3.0.64",
     "better-sqlite3": "^12.8.0",
     "sqlite-vec": "^0.1.7"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.37",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^6.0.142",
     "zod": "^4.3.6"
   }
 }

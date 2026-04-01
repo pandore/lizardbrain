@@ -4,6 +4,7 @@
 
 const llm = require('./llm');
 const { formatMessages } = llm;
+const { NoObjectGeneratedError } = require('ai');
 const store = require('./store');
 const urlEnricher = require('./enrichers/url');
 const { getProfile } = require('./profiles');
@@ -195,7 +196,12 @@ async function run(adapter, driver, config, options = {}) {
       maxId = batchMaxId > maxId ? batchMaxId : maxId;
       if (!dryRun) store.setCursor(driver, maxId);
     } catch (err) {
-      log(`  Batch ${i + 1} error: ${err.message}`);
+      if (NoObjectGeneratedError.isInstance(err)) {
+        log(`  Batch ${i + 1} structured output failed — model returned invalid object`);
+        if (err.text) log(`  Raw response (first 200 chars): ${err.text.slice(0, 200)}`);
+      } else {
+        log(`  Batch ${i + 1} error: ${err.message}`);
+      }
     }
 
     // Rate limit pause

@@ -1400,6 +1400,89 @@ function testExtractFromText() {
   assert(typeof llm.extractFromText === 'function', 'extractFromText is exported');
   assert(typeof llm.buildPrompt === 'function', 'buildPrompt still exported');
   assert(typeof llm.formatMessages === 'function', 'formatMessages still exported');
+  assert(typeof llm.buildExtractionSchema === 'function', 'buildExtractionSchema is exported');
+  assert(typeof llm.createProvider === 'function', 'createProvider is exported');
+  assert(typeof llm.isAnthropic === 'function', 'isAnthropic is exported');
+  assert(typeof llm.repairJson === 'function', 'repairJson is exported');
+}
+
+function testBuildExtractionSchema() {
+  console.log('\n--- Test: build extraction schema ---');
+
+  const { buildExtractionSchema } = require('../src/llm');
+
+  // Knowledge profile: members, facts, topics
+  const knowledgeSchema = buildExtractionSchema(['members', 'facts', 'topics'], false);
+  const knowledgeShape = knowledgeSchema.shape;
+  assert('members' in knowledgeShape, 'knowledge schema has members');
+  assert('facts' in knowledgeShape, 'knowledge schema has facts');
+  assert('topics' in knowledgeShape, 'knowledge schema has topics');
+  assert(!('decisions' in knowledgeShape), 'knowledge schema excludes decisions');
+  assert(!('updates' in knowledgeShape), 'knowledge schema without context has no updates');
+
+  // Team profile: adds decisions, tasks
+  const teamSchema = buildExtractionSchema(['members', 'facts', 'topics', 'decisions', 'tasks'], false);
+  const teamShape = teamSchema.shape;
+  assert('decisions' in teamShape, 'team schema has decisions');
+  assert('tasks' in teamShape, 'team schema has tasks');
+  assert(!('questions' in teamShape), 'team schema excludes questions');
+
+  // Full profile: all 7 entity types
+  const fullSchema = buildExtractionSchema(['members', 'facts', 'topics', 'decisions', 'tasks', 'questions', 'events'], false);
+  const fullShape = fullSchema.shape;
+  assert('events' in fullShape, 'full schema has events');
+  assert('questions' in fullShape, 'full schema has questions');
+
+  // With context: adds updates sub-object
+  const withCtx = buildExtractionSchema(['members', 'facts', 'topics', 'decisions', 'tasks', 'questions'], true);
+  const ctxShape = withCtx.shape;
+  assert('updates' in ctxShape, 'schema with context has updates');
+
+  // Without decisions/tasks/questions: no updates even with context
+  const noUpdatable = buildExtractionSchema(['members', 'facts', 'topics'], true);
+  assert(!('updates' in noUpdatable.shape), 'no updates when no updatable entities');
+
+  // Schema validates correct data
+  const testData = { members: [{ username: null, display_name: 'Alice', expertise: 'Python', projects: null }], facts: [], topics: [] };
+  const result = knowledgeSchema.safeParse(testData);
+  assert(result.success, 'schema validates correct extraction data');
+
+  // Schema accepts null arrays (LLM may return null for empty arrays)
+  const nullArrays = { members: null, facts: null, topics: null };
+  const nullResult = knowledgeSchema.safeParse(nullArrays);
+  assert(nullResult.success, 'schema accepts null arrays');
+}
+
+function testCreateProvider() {
+  console.log('\n--- Test: create provider ---');
+
+  const { createProvider, isAnthropic } = require('../src/llm');
+
+  // Non-Anthropic config returns openai-compatible provider
+  const provider = createProvider({ baseUrl: 'https://api.openai.com/v1', apiKey: 'test-key' });
+  assert(typeof provider === 'function', 'createProvider returns a callable provider');
+
+  // Anthropic config without package throws clear error (or succeeds if installed)
+  const anthropicConfig = { baseUrl: 'https://api.anthropic.com/v1', apiKey: 'test-key' };
+  assert(isAnthropic(anthropicConfig), 'config is detected as Anthropic');
+  try {
+    const anthProvider = createProvider(anthropicConfig);
+    assert(typeof anthProvider === 'function', 'Anthropic provider works when @ai-sdk/anthropic installed');
+  } catch (e) {
+    assert(e.message.includes('@ai-sdk/anthropic'), 'Anthropic missing error mentions the package');
+  }
+
+  // Trailing slash in baseUrl is handled
+  const trailingSlash = createProvider({ baseUrl: 'https://api.groq.com/openai/v1/', apiKey: 'test-key' });
+  assert(typeof trailingSlash === 'function', 'trailing slash in baseUrl handled');
+
+  // Missing baseUrl throws clear error
+  try {
+    createProvider({ apiKey: 'test-key' });
+    assert(false, 'should throw on missing baseUrl');
+  } catch (e) {
+    assert(e.message.includes('base URL'), 'missing baseUrl throws descriptive error');
+  }
 }
 
 async function testMcpToolHandlers() {
@@ -1636,6 +1719,8 @@ async function runAll() {
   testStdinAdapter();
   testContextAssembly();
   testExtractFromText();
+  testBuildExtractionSchema();
+  testCreateProvider();
   await testMcpToolHandlers();
   await testMcpIntegration();
   testMcpStdoutSafety();

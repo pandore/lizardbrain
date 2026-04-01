@@ -1,8 +1,11 @@
 /**
  * llm.js — Model-agnostic LLM client.
- * Supports: OpenAI-compatible (OpenAI, Gemini, Groq, Ollama, etc.) and Anthropic Messages API.
+ * Uses Vercel AI SDK for structured output with Zod schema validation.
+ * Supports: any OpenAI-compatible API (OpenAI, Gemini, Groq, Ollama, etc.) and native Anthropic.
  */
 
+const { z } = require('zod');
+const { generateText, Output, NoObjectGeneratedError } = require('ai');
 const { ENTITY_DEFS } = require('./profiles');
 
 const EXTRACTION_PROMPT = `Analyze these chat messages and extract structured knowledge.
@@ -176,6 +179,134 @@ function isAnthropic(config) {
   return false;
 }
 
+// --- Zod entity schemas for structured output ---
+
+const memberSchema = z.object({
+  username: z.string().nullable(),
+  display_name: z.string(),
+  expertise: z.string().nullable(),
+  projects: z.string().nullable(),
+});
+
+const factSchema = z.object({
+  category: z.string(),
+  content: z.string(),
+  source_member: z.string().nullable(),
+  tags: z.string().nullable(),
+  confidence: z.number().nullable(),
+});
+
+const topicSchema = z.object({
+  name: z.string(),
+  summary: z.string().nullable(),
+  participants: z.string().nullable(),
+  tags: z.string().nullable(),
+});
+
+const decisionSchema = z.object({
+  description: z.string(),
+  participants: z.string().nullable(),
+  context: z.string().nullable(),
+  status: z.string().nullable(),
+  tags: z.string().nullable(),
+});
+
+const taskSchema = z.object({
+  description: z.string(),
+  assignee: z.string().nullable(),
+  deadline: z.string().nullable(),
+  status: z.string().nullable(),
+  source_member: z.string().nullable(),
+  tags: z.string().nullable(),
+});
+
+const questionSchema = z.object({
+  question: z.string(),
+  asker: z.string().nullable(),
+  answer: z.string().nullable(),
+  answered_by: z.string().nullable(),
+  status: z.string().nullable(),
+  tags: z.string().nullable(),
+});
+
+const eventSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  event_date: z.string().nullable(),
+  location: z.string().nullable(),
+  attendees: z.string().nullable(),
+  tags: z.string().nullable(),
+});
+
+const ENTITY_SCHEMAS = {
+  members: memberSchema,
+  facts: factSchema,
+  topics: topicSchema,
+  decisions: decisionSchema,
+  tasks: taskSchema,
+  questions: questionSchema,
+  events: eventSchema,
+};
+
+// Update sub-schemas (for context-aware extraction)
+const decisionUpdateSchema = z.object({ id: z.number(), status: z.string(), context: z.string().nullable() });
+const taskUpdateSchema = z.object({ id: z.number(), status: z.string() });
+const questionUpdateSchema = z.object({ id: z.number(), answer: z.string(), answered_by: z.string().nullable(), status: z.string().nullable() });
+
+/**
+ * Build a Zod extraction schema dynamically from profile entities.
+ * Only includes entity types that the profile uses.
+ */
+function buildExtractionSchema(entities, hasContext) {
+  const shape = {};
+  for (const entity of entities) {
+    if (ENTITY_SCHEMAS[entity]) {
+      shape[entity] = z.array(ENTITY_SCHEMAS[entity]).nullable();
+    }
+  }
+
+  if (hasContext) {
+    const updateShape = {};
+    if (entities.includes('decisions')) updateShape.decisions = z.array(decisionUpdateSchema).nullable();
+    if (entities.includes('tasks')) updateShape.tasks = z.array(taskUpdateSchema).nullable();
+    if (entities.includes('questions')) updateShape.questions = z.array(questionUpdateSchema).nullable();
+    if (Object.keys(updateShape).length > 0) {
+      shape.updates = z.object(updateShape).nullable();
+    }
+  }
+
+  return z.object(shape);
+}
+
+// --- Provider selection ---
+
+/**
+ * Create the right AI SDK provider based on config.
+ * - Anthropic: uses @ai-sdk/anthropic (optional dep)
+ * - Everything else: uses @ai-sdk/openai-compatible (any baseUrl)
+ */
+function createProvider(config) {
+  if (!config.baseUrl) throw new Error('LLM base URL not configured');
+  const base = config.baseUrl.replace(/\/+$/, '');
+
+  if (isAnthropic(config)) {
+    try {
+      const { createAnthropic } = require('@ai-sdk/anthropic');
+      return createAnthropic({ baseURL: base, apiKey: config.apiKey });
+    } catch (e) {
+      if (e.code === 'MODULE_NOT_FOUND') {
+        throw new Error('Direct Anthropic API requires @ai-sdk/anthropic. Install it with: npm install @ai-sdk/anthropic');
+      }
+      throw e;
+    }
+  }
+
+  const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
+  return createOpenAICompatible({ baseURL: base, apiKey: config.apiKey, name: 'llm' });
+}
+
+// --- JSON repair (private, used as fallback) ---
+
 /**
  * Attempt to repair truncated or malformed JSON from LLM output.
  * Handles: code fences, trailing commas, truncated arrays/objects.
@@ -223,58 +354,24 @@ function getUnclosedBrackets(text) {
   return stack.reverse().join('');
 }
 
-function buildRequest(prompt, config) {
-  const { apiKey, baseUrl, model } = config;
-  const base = baseUrl.replace(/\/+$/, '');
+// --- Normalize null arrays to empty arrays ---
 
-  if (isAnthropic(config)) {
-    return {
-      url: base.endsWith('/v1') ? base + '/messages' : base + '/v1/messages',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: {
-        model,
-        system: 'You extract structured knowledge from chat messages. Always respond with valid JSON only.',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        max_tokens: 4096,
-      },
-    };
+function normalizeOutput(output) {
+  if (!output || typeof output !== 'object') return output;
+  for (const key of Object.keys(output)) {
+    if (output[key] === null && key !== 'updates') {
+      output[key] = [];
+    }
   }
-
-  // OpenAI-compatible format
-  const body = {
-    model,
-    messages: [
-      { role: 'system', content: 'You extract structured knowledge from chat messages. Always respond with valid JSON only.' },
-      { role: 'user', content: prompt },
-    ],
-    temperature: 0.1,
-    max_tokens: 4096,
-    response_format: { type: 'json_object' },
-  };
-
-  return {
-    url: base + '/chat/completions',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body,
-  };
+  if (output.updates && typeof output.updates === 'object') {
+    for (const key of Object.keys(output.updates)) {
+      if (output.updates[key] === null) output.updates[key] = [];
+    }
+  }
+  return output;
 }
 
-function parseResponse(data, config) {
-  if (isAnthropic(config)) {
-    // Find last text block — Anthropic may include thinking blocks before the actual text
-    const textBlock = data.content?.filter(b => b.type === 'text').pop();
-    return textBlock?.text || null;
-  }
-  return data.choices?.[0]?.message?.content || null;
-}
+// --- Core extraction ---
 
 async function extract(messages, config) {
   const {
@@ -286,6 +383,7 @@ async function extract(messages, config) {
     overlapMessages,
     contextSection,
     knownMembers,
+    maxRetries,
   } = config;
 
   if (!apiKey) throw new Error('LLM API key not configured');
@@ -306,49 +404,57 @@ async function extract(messages, config) {
     prompt = EXTRACTION_PROMPT.replace('{messages}', formatted);
   }
 
-  const req = buildRequest(prompt, config);
+  const provider = createProvider(config);
 
-  const res = await fetch(req.url, {
-    method: 'POST',
-    headers: req.headers,
-    body: JSON.stringify(req.body),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`LLM API error ${res.status}: ${errText}`);
+  // promptTemplate path: plain text mode + repairJson (deprecated, backward compat)
+  if (promptTemplate) {
+    const result = await generateText({
+      model: provider(model),
+      system: 'You extract structured knowledge from chat messages. Always respond with valid JSON only.',
+      prompt,
+      temperature: 0.1,
+      maxTokens: 4096,
+      maxRetries: maxRetries ?? 3,
+    });
+    return repairJson(result.text);
   }
 
-  const data = await res.json();
-  const content = parseResponse(data, config);
-  if (!content) throw new Error('Empty response from LLM');
+  // Standard path: structured output with Zod schema
+  const entities = profileConfig?.entities || ['members', 'facts', 'topics'];
+  const hasContext = !!contextSection;
+  const schema = buildExtractionSchema(entities, hasContext);
 
-  return repairJson(content);
+  try {
+    const result = await generateText({
+      model: provider(model),
+      system: 'You extract structured knowledge from chat messages. Always respond with valid JSON only.',
+      prompt,
+      output: Output.object({ schema }),
+      temperature: 0.1,
+      maxTokens: 4096,
+      maxRetries: maxRetries ?? 3,
+    });
+    return normalizeOutput(result.output);
+  } catch (err) {
+    // Fallback: if structured output fails, try repairJson on the raw text
+    if (NoObjectGeneratedError.isInstance(err) && err.text) {
+      try {
+        const repaired = repairJson(err.text);
+        return normalizeOutput(repaired);
+      } catch {
+        // repairJson also failed — throw the original error
+      }
+    }
+    throw err;
+  }
 }
 
 /**
- * Retries extract() on transient errors with exponential backoff + jitter.
- * Retries on: HTTP 429 (rate limit), 5xx (502, 503, 504), network errors.
+ * Thin facade over extract() — preserves the existing call interface.
+ * SDK handles retries internally via maxRetries option.
  */
 async function extractWithRetry(messages, config, maxRetries = 3) {
-  let delay = 1000;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await extract(messages, config);
-    } catch (err) {
-      const status = err.status || (err.message.match(/error (\d+):/)?.[1] && parseInt(err.message.match(/error (\d+):/)[1]));
-      const errCode = err.code || err.cause?.code;
-      const isRetryable = status === 429 || (status >= 500 && status <= 504)
-        || ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'UND_ERR_CONNECT_TIMEOUT'].includes(errCode);
-      if (isRetryable && attempt < maxRetries) {
-        const jitter = delay * (0.5 + Math.random());
-        await new Promise(resolve => setTimeout(resolve, jitter));
-        delay *= 2;
-        continue;
-      }
-      throw err;
-    }
-  }
+  return extract(messages, { ...config, maxRetries });
 }
 
 /**
@@ -384,4 +490,4 @@ async function extractFromText(text, config, profileConfig) {
   return result;
 }
 
-module.exports = { extract, extractWithRetry, extractFromText, buildPrompt, formatMessages, repairJson, isAnthropic, EXTRACTION_PROMPT };
+module.exports = { extract, extractWithRetry, extractFromText, buildPrompt, formatMessages, isAnthropic, buildExtractionSchema, createProvider, repairJson, EXTRACTION_PROMPT };
