@@ -1,11 +1,11 @@
 # LizardBrain
-**Give your group chat a brain.**
+**Turn team conversations into structured knowledge.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 [![Version](https://img.shields.io/badge/version-0.10.0-orange.svg)](package.json)
 
-Your group chat has years of knowledge buried in thousands of messages. Who knows what, what was decided, what tasks were assigned, what questions were answered -- it's all there, but impossible to find.
+Your team's conversations have years of knowledge buried in thousands of messages -- chats, meetings, support threads. Who knows what, what was decided, what tasks were assigned, what questions were answered -- it's all there, but impossible to find.
 
 LizardBrain reads your chat messages, extracts the important stuff using any LLM, and stores it in a searchable database. Run it on a cron, and your AI agent always knows what your group has been talking about.
 

@@ -1,5 +1,5 @@
 /**
- * lizardbrain — Persistent memory for group chats.
+ * lizardbrain — Structured memory for team conversations.
  *
  * Usage (programmatic):
  *
